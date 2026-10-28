@@ -73,9 +73,10 @@ mark{background:var(--med-bg);color:inherit}
 </head>
 <body>
 <header>
-  <div><h1>Whitney Post-Award Audit</h1><div class="sub" id="sub">No data loaded</div></div>
+  <div><h1>Whitney Post-Award Audit</h1><div class="sub" id="sub">No data loaded</div><div class="sub" id="live"></div></div>
   <div class="sp"></div>
   <button class="btn pri" id="addBtn">Add files</button>
+  <button class="btn" id="linkBtn" title="Read the newest workbook straight from a synced OneDrive / Google Drive folder">Link folder</button>
   <button class="btn" id="expFlags">Export flags</button>
   <button class="btn" id="expState">Save notes</button>
   <button class="btn" id="impState">Load notes</button>
@@ -647,15 +648,16 @@ function toast(t) { const d = document.createElement('div'); d.textContent = t; 
 /* IndexedDB keeps the uploaded workbooks so a reload does not need a re-drop */
 const idb = {
   db: null,
-  open() { return new Promise(res => { const r = indexedDB.open('whitney_audit', 1); r.onupgradeneeded = () => r.result.createObjectStore('files', { keyPath: 'kind' }); r.onsuccess = () => { idb.db = r.result; res(); }; r.onerror = () => res(); }); },
+  open() { return new Promise(res => { const r = indexedDB.open('whitney_audit', 2); r.onupgradeneeded = () => { const d = r.result; if (!d.objectStoreNames.contains('files')) d.createObjectStore('files', { keyPath: 'kind' }); if (!d.objectStoreNames.contains('handles')) d.createObjectStore('handles', { keyPath: 'id' }); }; r.onsuccess = () => { idb.db = r.result; res(); }; r.onerror = () => res(); }); },
   put(rec) { return new Promise(res => { if (!idb.db) return res(); const tx = idb.db.transaction('files', 'readwrite'); tx.objectStore('files').put(rec); tx.oncomplete = res; tx.onerror = res; }); },
   all() { return new Promise(res => { if (!idb.db) return res([]); const q = idb.db.transaction('files').objectStore('files').getAll(); q.onsuccess = () => res(q.result); q.onerror = () => res([]); }); },
   clear() { return new Promise(res => { if (!idb.db) return res(); const tx = idb.db.transaction('files', 'readwrite'); tx.objectStore('files').clear(); tx.oncomplete = res; }); }
 };
 
 /* ---------- loading ---------- */
+let SLOTMOD = {};
 let FILES = [], M = null, VIEW = 'overview', UI = { sort: {}, q: {}, show: {} };
-async function ingest(fileList) {
+async function ingest(fileList, quiet) {
   for (const f of fileList) {
     try {
       const buf = new Uint8Array(await f.arrayBuffer());
@@ -665,7 +667,8 @@ async function ingest(fileList) {
       parsed.slot = isTracker ? 'tracker' : 'ledger';
       FILES = FILES.filter(x => x.slot !== parsed.slot); FILES.push(parsed);
       await idb.put({ kind: parsed.slot, name: f.name, buf, modified: f.lastModified });
-      toast(`${f.name}: loaded ${parsed.kinds.join(', ')}`);
+      SLOTMOD[parsed.slot] = f.lastModified;
+      if (!quiet) toast(`${f.name}: loaded ${parsed.kinds.join(', ')}`);
     } catch (e) { console.error(e); toast(f.name + ': could not read (' + e.message + ')'); }
   }
   rebuild();
@@ -709,7 +712,7 @@ function render() {
 }
 function emptyHTML() {
   return `<div class="empty"><h2>Drop your files here</h2><p>Drag in the weekly Monday finances workbook (balances, expenses, payroll, projected payroll, projects) and, optionally, the MPAR award tracker. Everything is read in this browser; nothing is uploaded anywhere.</p>
-  <p><button class="btn pri" onclick="document.getElementById('fileIn').click()">Choose files</button></p>
+  <p><button class="btn pri" onclick="document.getElementById('fileIn').click()">Choose files</button> <button class="btn" onclick="document.getElementById('linkBtn').click()">Link a OneDrive / Drive folder</button></p>
   <p class="note">Scope: fund 201, 209, 211 and 213, leaving out any award whose name is a PI OH / PI Overhead account. Change this under Rules &amp; settings.</p></div>`;
 }
 function awardChip(a) { return a.worst === 'ok' ? chip('ok') : chip(a.worst, `${a.openFlags} ${a.openFlags === 1 ? 'flag' : 'flags'}`); }
@@ -825,6 +828,7 @@ function vSettings() {
    ${num('largeTxn', '$ threshold for "large transaction"')}${num('effortVarPct', '% relative effort change vs commitment (prior-approval rule of thumb)')}${num('dueSoonDays', 'days ahead to flag report due dates')}${num('tolerance', '$ rounding tolerance')}
    <p class="note">Changes apply immediately and are saved in this browser.</p><button class="btn sm" id="resetCfg">Reset to defaults</button></div></div>
   <div class="panel"><h2>Rules</h2><div class="pad">${Object.entries(R).filter(([k]) => k !== 'MANUAL').map(([k, r]) => `<div class="rule"><label class="f" style="margin:0"><input type="checkbox" data-rule="${k}" ${c.rules[k] === false ? '' : 'checked'}> <b>${esc(r.title)}</b></label><span class="chip ${r.sev}">${SEVL[r.sev]}</span><span class="chip neutral">${r.cat}</span></div>`).join('')}</div></div></div>
+  <div class="panel"><h2>Linked folders (live data)</h2><div class="pad sm">${FSA ? (LINKS.length ? LINKS.map(L => `<div>${esc(L.handle.name)} <button class="btn sm" data-unlink="${L.id}">Unlink</button></div>`).join('') : '<div>No folder linked yet. Use <b>Link folder</b> at the top.</div>') + '<p class="note">Point it at the OneDrive or Google Drive folder that holds the weekly workbook (and optionally the MPAR tracker). The newest workbook is read automatically; nothing is uploaded.</p><button class="btn sm" id="syncNow">Check now</button>' : '<div>This browser cannot link folders. Open the page in Chrome or Edge.</div>'}</div></div>
   <div class="panel"><h2>Data in memory</h2><div class="pad sm">${Object.entries(M.counts).map(([k, v]) => `<div>${k}: <b>${v}</b> rows</div>`).join('')}
   <p class="note">Unlinked payroll lines: ${M.unlinked.length}. Weekly snapshots kept for trend: ${Object.keys(ST.snaps).length}.</p>
   <button class="btn sm" id="clearData">Clear loaded files</button> <button class="btn sm" id="clearNotes">Erase all notes &amp; commitments</button></div></div>`;
@@ -835,7 +839,9 @@ function bindSettings() {
   document.querySelectorAll('[data-cfgx]').forEach(e => e.onchange = () => { try { new RegExp(e.value); ST.cfg.excludeRegex = e.value; save(); rebuild(); } catch (x) { toast('Invalid regex'); } });
   document.querySelectorAll('[data-rule]').forEach(e => e.onchange = () => { ST.cfg.rules = Object.assign({}, M.cfg.rules, { [e.dataset.rule]: e.checked }); save(); rebuild(); });
   $('#resetCfg').onclick = () => { ST.cfg = {}; save(); rebuild(); };
-  $('#clearData').onclick = async () => { await idb.clear(); FILES = []; rebuild(); };
+  document.querySelectorAll('[data-unlink]').forEach(b => b.onclick = async () => { LINKS = LINKS.filter(L => L.id !== b.dataset.unlink); await hstore('readwrite', s => s.delete(b.dataset.unlink)); showLive(); render(); });
+  if ($('#syncNow')) $('#syncNow').onclick = () => syncLinks(true);
+  $('#clearData').onclick = async () => { await idb.clear(); SLOTMOD = {}; FILES = []; rebuild(); };
   $('#clearNotes').onclick = () => { if (confirm('Erase every note, status, commitment and manual flag saved in this browser?')) { Object.assign(ST, { flagState: {}, manualFlags: [], commitments: {}, trackerLinks: {}, docs: {} }); save(); rebuild(); } };
 }
 
@@ -1017,11 +1023,98 @@ document.addEventListener('mousemove', e => { const g = e.target.closest && e.ta
 // sortable headers also need table re-render inside award table
 const _rend = render;
 
+/* ---------- linked folders (Chrome / Edge): read the newest workbook straight from a synced OneDrive / Google Drive folder ----------
+   The browser remembers the folder (never uploads anything). Every open, every few minutes and whenever the tab regains focus it
+   looks for the newest ledger workbook (has the Fund Balances sheet) and MPAR tracker and reloads them when they change. */
+const FSA = typeof window.showDirectoryPicker === 'function';
+let LINKS = [], SEEN = {}, SYNCING = false, SYNC = { at: null, need: false, files: {}, err: '' };
+const hstore = (mode, fn) => new Promise(res => { if (!idb.db) return res([]); const tx = idb.db.transaction('handles', mode); const q = fn(tx.objectStore('handles')); tx.oncomplete = () => res(q && q.result !== undefined ? q.result : []); tx.onerror = () => res([]); });
+async function walk(dir, out, depth) {
+  for await (const [name, h] of dir.entries()) {
+    if (out.length > 300) return;
+    if (name.startsWith('~$') || name.startsWith('.')) continue;
+    if (h.kind === 'file') { if (/\.(xlsx|xlsm)$/i.test(name)) out.push(h); }
+    else if (depth < 2) await walk(h, out, depth + 1);
+  }
+}
+async function syncLinks(interactive) {
+  if (!LINKS.length || SYNCING) return;
+  SYNCING = true; SYNC.err = '';
+  try {
+    let need = false; const cands = [];
+    for (const L of LINKS) {
+      try {
+        let p = await L.handle.queryPermission({ mode: 'read' });
+        if (p !== 'granted' && interactive) p = await L.handle.requestPermission({ mode: 'read' });
+        if (p !== 'granted') { need = true; continue; }
+        const hs = []; await walk(L.handle, hs, 0);
+        for (const h of hs) { try { cands.push(await h.getFile()); } catch (e) {} }
+      } catch (e) { SYNC.err = 'Could not read folder ' + L.handle.name; }
+    }
+    SYNC.need = need;
+    cands.sort((a, b) => b.lastModified - a.lastModified);
+    const got = {}, take = []; let tries = 0;
+    for (const f of cands) {
+      if (got.ledger && got.tracker) break;
+      const key = f.name + '|' + f.lastModified + '|' + f.size;
+      let slot = SEEN[key];
+      if (slot === undefined) {
+        if (tries++ >= 10) break;
+        try {
+          const p = Engine.parseWorkbook(XLSX, new Uint8Array(await f.arrayBuffer()), f.name);
+          slot = p.kinds.includes('balances') ? 'ledger' : (p.kinds.length === 1 && p.kinds[0] === 'tracker') ? 'tracker' : null;
+        } catch (e) { slot = null; }
+        SEEN[key] = slot;
+      }
+      if (!slot || got[slot]) continue;
+      got[slot] = f;
+      if (f.lastModified > (SLOTMOD[slot] || 0)) take.push(f);
+    }
+    SYNC.files = {}; for (const k in got) SYNC.files[k] = got[k].name;
+    SYNC.at = new Date();
+    if (take.length) { await ingest(take, true); toast('Updated from linked folder: ' + take.map(f => f.name).join(', ')); }
+  } catch (e) { console.error(e); SYNC.err = e.message; }
+  finally { SYNCING = false; showLive(); }
+}
+function showLive() {
+  const el = $('#live'); if (!el) return;
+  if (!LINKS.length) { el.textContent = ''; return; }
+  const t = SYNC.at ? SYNC.at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+  el.innerHTML = SYNC.need
+    ? 'Linked folder needs your OK to read it <button class="btn sm" id="reconnect">Reconnect</button>'
+    : `<span style="color:var(--ok)">●</span> Live from linked folder · ${esc(Object.values(SYNC.files).join(' + ') || 'no workbook found yet')}${t ? ' · checked ' + t : ''}${SYNC.err ? ' · ' + esc(SYNC.err) : ''}`;
+  const b = $('#reconnect'); if (b) b.onclick = () => syncLinks(true);
+}
+$('#linkBtn').onclick = async () => {
+  if (!FSA) return toast('Linking a folder needs Chrome or Edge on a computer.');
+  try {
+    const handle = await window.showDirectoryPicker({ id: 'whitney-post-award', mode: 'read' });
+    for (const L of LINKS) if (await L.handle.isSameEntry(handle)) return syncLinks(true);
+    const rec = { id: 'f' + Date.now(), handle }; LINKS.push(rec);
+    await hstore('readwrite', s => s.put(rec));
+    toast('Folder linked: ' + handle.name); await syncLinks(true);
+  } catch (e) { if (e.name !== 'AbortError') toast('Could not link the folder: ' + e.message); }
+};
+setInterval(() => syncLinks(false), 120000);
+window.addEventListener('focus', () => syncLinks(false));
+document.addEventListener('visibilitychange', () => { if (!document.hidden) syncLinks(false); });
+
 (async function init() {
   await idb.open();
-  const saved = await idb.all();
+  let saved = await idb.all();
+  if (window.EMBED) {   // built-in snapshot: used until the user drops newer files or a newer build ships
+    let seen = ''; try { seen = localStorage.getItem('whitney_embed_id') || ''; } catch (e) {}
+    if (seen !== window.EMBED.id || !saved.length) {
+      await idb.clear(); saved = [];
+      for (const f of window.EMBED.files) { const buf = Uint8Array.from(atob(f.b64), c => c.charCodeAt(0)); const rec = { kind: f.kind, name: f.name, buf, modified: 0 }; await idb.put(rec); saved.push(rec); }
+      try { localStorage.setItem('whitney_embed_id', window.EMBED.id); } catch (e) {}
+    }
+  }
   for (const s of saved) { try { const p = Engine.parseWorkbook(XLSX, s.buf, s.name); p.slot = s.kind; FILES.push(p); } catch (e) {} }
+  for (const s of saved) SLOTMOD[s.kind] = s.modified || 0;
   rebuild();
+  LINKS = await hstore('readonly', s => s.getAll());
+  showLive(); syncLinks(false);
 })();
 </script>
 </body>
