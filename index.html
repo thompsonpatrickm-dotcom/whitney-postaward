@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Whitney Post-Award Audit</title>
 <style>
-:root{--bg:#f4f4f3;--surf:#ffffff;--surf2:#ebebea;--ink:#1c1c1c;--ink2:#3d3d3d;--mut:#5f5f5f;--line:#cfcfcd;--acc:#3b4d63;--acc-bg:#e4e8ed;--on-acc:#fff;--crit:#a31d15;--crit-bg:#fbe5e3;--high:#9a4300;--high-bg:#fbebd9;--med:#6e5300;--med-bg:#f7efc8;--low:#444b54;--low-bg:#e6e7e8;--ok:#1d6139;--ok-bg:#dcefe3;--c1:#4a6283;--c2:#8a8f96;--c3:#cfd5dd;--shadow:0 1px 2px rgba(0,0,0,.08),0 4px 14px rgba(0,0,0,.06)}
-@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#161616;--surf:#202020;--surf2:#2b2b2b;--ink:#f1f1f0;--ink2:#cfcfcd;--mut:#a5a5a3;--line:#464646;--acc:#aab9cc;--acc-bg:#2c3541;--on-acc:#141414;--crit:#ff9d94;--crit-bg:#432220;--high:#ffbe85;--high-bg:#41301c;--med:#ffe083;--med-bg:#3d360f;--low:#bcc3cc;--low-bg:#2f3236;--ok:#86dba9;--ok-bg:#1e3326;--c1:#9db2cf;--c2:#8e949b;--c3:#454d58;--shadow:none;color-scheme:dark}}
-:root[data-theme=dark]{--bg:#161616;--surf:#202020;--surf2:#2b2b2b;--ink:#f1f1f0;--ink2:#cfcfcd;--mut:#a5a5a3;--line:#464646;--acc:#aab9cc;--acc-bg:#2c3541;--on-acc:#141414;--crit:#ff9d94;--crit-bg:#432220;--high:#ffbe85;--high-bg:#41301c;--med:#ffe083;--med-bg:#3d360f;--low:#bcc3cc;--low-bg:#2f3236;--ok:#86dba9;--ok-bg:#1e3326;--c1:#9db2cf;--c2:#8e949b;--c3:#454d58;--shadow:none;color-scheme:dark}
+:root{--bg:#d5d4cf;--surf:#e9e8e4;--surf2:#c8c7c0;--ink:#1f1f1c;--ink2:#383833;--mut:#53524b;--line:#aeada4;--acc:#4b5e4e;--acc-bg:#cdd5c8;--on-acc:#fff;--crit:#8c2a1c;--crit-bg:#ecd2c8;--high:#85470e;--high-bg:#ecd8b8;--med:#65560d;--med-bg:#e5ddb0;--low:#45483f;--low-bg:#d2d1c8;--ok:#2d5a38;--ok-bg:#cbdcc6;--c1:#556b58;--c2:#8c8a80;--c3:#bcb9ae;--shadow:0 1px 2px rgba(40,38,30,.10),0 4px 14px rgba(40,38,30,.07)}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#1d1d1b;--surf:#272725;--surf2:#32322f;--ink:#efeee9;--ink2:#cccbc3;--mut:#a3a199;--line:#4a4944;--acc:#a9bda9;--acc-bg:#2d372e;--on-acc:#141412;--crit:#ff9d8f;--crit-bg:#432320;--high:#f2bb82;--high-bg:#40301b;--med:#ebd884;--med-bg:#3a350f;--low:#bdbfb4;--low-bg:#30312d;--ok:#8fd4a0;--ok-bg:#1f3524;--c1:#9fb8a1;--c2:#8d8b82;--c3:#484840;--shadow:none;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#1d1d1b;--surf:#272725;--surf2:#32322f;--ink:#efeee9;--ink2:#cccbc3;--mut:#a3a199;--line:#4a4944;--acc:#a9bda9;--acc-bg:#2d372e;--on-acc:#141412;--crit:#ff9d8f;--crit-bg:#432320;--high:#f2bb82;--high-bg:#40301b;--med:#ebd884;--med-bg:#3a350f;--low:#bdbfb4;--low-bg:#30312d;--ok:#8fd4a0;--ok-bg:#1f3524;--c1:#9fb8a1;--c2:#8d8b82;--c3:#484840;--shadow:none;color-scheme:dark}
 *{box-sizing:border-box}html,body{margin:0}
 body{font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink)}
 button,select,input,textarea{font:inherit;color:inherit}
@@ -253,7 +253,8 @@ const SIGS = {
   payroll:    ['Employee Group', 'Salary', 'Fringe Amount', 'Fund Code', 'Project'],
   projPayroll:['Distrib %', 'Projected Total', 'Employee Name', 'Project Code'],
   projects:   ['Project Code', 'Project Descr', 'Project Status', 'PI Name'],
-  tracker:    ['Award_ID', 'Project_ID', 'Sponsor']
+  tracker:    ['Award_ID', 'Project_ID', 'Sponsor'],
+  payHist:    ['Pay End Date', 'Monetary Amount', 'Earnings Code', 'Employee ID']
 };
 // header cells in the balance sheet carry trailing spaces; tolerate by trimming in table()
 function parseWorkbook(XLSX, buf, fileName) {
@@ -289,6 +290,41 @@ function nsfSummer(pkgs, ref) {
     });
   });
   return out;
+}
+
+
+/* ---------- payroll history (Payroll or Fellowship Earnings by Cost Center by Person) ---------- */
+function payHistFrom(rows) {
+  const by = {};
+  rows.forEach(r => {
+    const d = iso(r['Pay End Date']); if (!d) return;
+    const id = str(r['Employee ID']) || str(r['Name']); const e = by[id] || (by[id] = { name: str(r['Name']), rows: [] });
+    e.rows.push([d, str(r['Fund Code']), str(r['Project Code']) === '-' ? '' : str(r['Project Code']), str(r['Earnings Code']).slice(0, 3), r2(num(r['Monetary Amount'])), str(r['Account'])]);
+  });
+  return by;
+}
+/* per person and summer: monthly rate = 9 months of academic-year pay (Aug 16 - May 15, all funds except 194) / 9; months charged to a grant = grant dollars / rate */
+function summerFromHist(hist, cfg) {
+  cfg = cfg || DEFAULTS; const grant = new Set(cfg.funds), out = [];
+  Object.entries(hist || {}).forEach(([id, e]) => {
+    const rows = e.rows, first = rows.reduce((m, r) => r[0] < m ? r[0] : m, '9999'), last = rows.reduce((m, r) => r[0] > m ? r[0] : m, '');
+    const yrs = new Set(rows.map(r => +r[0].slice(0, 4)));
+    [...yrs].sort().forEach(Y => {
+      const ay0 = (Y - 1) + '-08-16', ay1 = Y + '-05-15', s0 = Y + '-05-16', s1 = Y + '-08-15';
+      if (last < ay1 && last < s0) return;
+      let ayAll = 0; const ayG = {}, suG = {}; let suW = 0, su194 = 0, ayN = new Set();
+      rows.forEach(r => {
+        const d = r[0], f = r[1], a = r[4];
+        if (d >= ay0 && d <= ay1) { if (f !== '194') { ayAll += a; ayN.add(d); } if (grant.has(f)) ayG[r[2]] = (ayG[r[2]] || 0) + a; }
+        else if (d >= s0 && d <= s1) { if (grant.has(f)) suG[r[2]] = (suG[r[2]] || 0) + a; else if (f === '194') su194 += a; else suW += a; }
+      });
+      const complete = first <= (Y - 1) + '-09-01' && last >= ay1, rate = complete && ayAll > 0 ? ayAll / 9 : null;
+      const projs = [...new Set([...Object.keys(ayG), ...Object.keys(suG)])];
+      out.push({ id, name: e.name, year: Y, rate, complete, ayAll, suW, su194, partialSummer: last < s1,
+        projects: projs.map(p => ({ code: p, ay: r2(ayG[p] || 0), su: r2(suG[p] || 0), ayM: rate ? (ayG[p] || 0) / rate : null, suM: rate ? (suG[p] || 0) / rate : null })).sort((x, y) => (y.su - x.su) || (y.ay - x.ay)) });
+    });
+  });
+  return out.sort((a, b) => a.name.localeCompare(b.name) || b.year - a.year);
 }
 
 /* ---------- model ---------- */
@@ -652,7 +688,7 @@ function build(files, userCfg, state) {
     kinds: Object.keys(S), counts: { balances: (S.balances || []).length, expenses: (S.expenses || []).length, payroll: (S.payroll || []).length, projPayroll: (S.projPayroll || []).length, tracker: trackerRows.length } };
 }
 
-const api = { DEFAULTS, RULES, parseWorkbook, build, nsfSummer, iso, dayDiff, addDays, ym, fyEnd, farFuture };
+const api = { DEFAULTS, RULES, parseWorkbook, build, nsfSummer, payHistFrom, summerFromHist, iso, dayDiff, addDays, ym, fyEnd, farFuture };
 if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Engine = api;
 })(typeof window !== 'undefined' ? window : globalThis);
 </script>
@@ -968,7 +1004,7 @@ const STATUS = { open: 'Open', review: 'In review', resolved: 'Resolved', dismis
 
 /* ---------- persistent state ---------- */
 const LS = 'whitney_postaward_v1';
-let ST = { flagState: {}, manualFlags: [], commitments: {}, trackerLinks: {}, cfg: {}, docs: {}, snaps: {}, awardPackages: {}, importLog: [] };
+let ST = { flagState: {}, manualFlags: [], commitments: {}, trackerLinks: {}, cfg: {}, docs: {}, snaps: {}, awardPackages: {}, importLog: [], payHist: {} };
 try { Object.assign(ST, JSON.parse(localStorage.getItem(LS) || '{}')); } catch (e) {}
 const save = () => { try { localStorage.setItem(LS, JSON.stringify(ST)); } catch (e) { toast('Could not save in this browser'); } };
 function toast(t) { const d = document.createElement('div'); d.textContent = t; d.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#101820;color:#fff;padding:9px 16px;border-radius:10px;z-index:300'; document.body.appendChild(d); setTimeout(() => d.remove(), 3200); }
@@ -991,6 +1027,12 @@ async function ingest(fileList, quiet) {
       const buf = new Uint8Array(await f.arrayBuffer());
       const parsed = Engine.parseWorkbook(XLSX, buf, f.name);
       if (!parsed.kinds.length) { toast(f.name + ': no recognizable sheets'); continue; }
+      if (parsed.kinds.includes('payHist') && !parsed.kinds.includes('balances')) {   // payroll distribution by person: kept as multi-year history, one entry per employee
+        const h = Engine.payHistFrom(parsed.sheets.payHist.rows); let n = 0;
+        Object.entries(h).forEach(([id, e]) => { ST.payHist[id] = e; n += e.rows.length; });
+        save(); if (!quiet) toast(`${f.name}: payroll history for ${Object.values(h).map(e => e.name).join(', ')} (${n} lines)`);
+        continue;
+      }
       const isTracker = parsed.kinds.length === 1 && parsed.kinds[0] === 'tracker';
       parsed.slot = isTracker ? 'tracker' : 'ledger';
       FILES = FILES.filter(x => x.slot !== parsed.slot); FILES.push(parsed);
@@ -1248,19 +1290,35 @@ function summerRows() {
   return rows.sort((x, y) => x.person.localeCompare(y.person) || x.code.localeCompare(y.code));
 }
 function vSummer() {
-  if (!Object.keys(ST.awardPackages || {}).length) return `<div class="panel"><h2>Summer salary</h2><div class="pad">Summer salary is tracked for 9-month faculty using their UFIRST effort commitments. Use <b>Import award</b> to load the UFIRST awards first.</div></div>`;
-  const rows = summerRows(), over = rows.filter(r => r.nsfYear != null && r.nsfYear > 2.0001);
-  const seen = new Set(), cap = Engine.nsfSummer(ST.awardPackages, M.ref);
+  const hist = Engine.summerFromHist(ST.payHist, Object.assign({}, Engine.DEFAULTS, ST.cfg)), hasUf = Object.keys(ST.awardPackages || {}).length > 0;
+  const yrs = [...new Set(hist.map(h => h.year))].sort().reverse(), q = UI.q.sm || {}, sel = q.year || (yrs[0] ? String(yrs[0]) : '');
+  const nameOf = c => { const a = M && M.byCode[c]; return a ? a.desc : ''; }, f1 = v => v == null ? '—' : v.toFixed(2);
+  const wholeChip = m => { if (m == null) return ''; if (Math.abs(m) < 0.15) return ''; const r = Math.round(m), off = m - r; return Math.abs(off) <= 0.1 ? chip('ok', r + (r === 1 ? ' month' : ' months')) : chip('medium', `${m.toFixed(2)} → not whole`); };
+  const view = hist.filter(h => String(h.year) === sel && h.projects.some(p => p.ay || p.su));
+  const hrows = view.map(h => {
+    const ps = h.projects.filter(p => p.ay || p.su), tag = `<td rowspan="${ps.length}"><b>${esc(h.name)}</b>${h.complete ? '' : '<div class="sm mut">history starts after Aug ' + (h.year - 1) + '</div>'}</td><td class="r" rowspan="${ps.length}">${h.rate ? fmt(h.rate) : '—'}</td>`;
+    const tail = `<td class="r" rowspan="${ps.length}">${fmt(h.suW)}</td><td class="r" rowspan="${ps.length}">${fmt(h.su194)}</td>`;
+    return ps.map((p, i) => `<tr>${i === 0 ? tag : ''}<td>${esc(p.code)}<div class="sm mut">${esc(nameOf(p.code))}</div></td><td class="r">${fmt(p.ay)}</td><td class="r">${f1(p.ayM)}</td><td class="r ${p.su > 1 ? 'neg' : ''}">${fmt(p.su)}</td><td class="r">${f1(p.suM)}</td><td>${wholeChip(p.suM)}</td>${i === 0 ? tail : ''}</tr>`).join('');
+  }).join('');
+  const offRows = view.reduce((s, h) => s + h.projects.filter(p => p.su > 1000).length, 0);
+  const uf = hasUf ? summerRows() : [], seen = new Set(), ufRows = uf.filter(r => { const k = r.person + r.awd + r.salMonths; if (seen.has(k)) return false; seen.add(k); return true; });
+  const frac = ufRows.filter(r => Math.abs(r.salMonths - Math.round(r.salMonths)) > 0.0001);
+  const cap = hasUf ? Engine.nsfSummer(ST.awardPackages, M.ref) : {};
   const capRows = Object.values(cap).sort((a, b) => b.months - a.months).map(x => `<tr><td>${esc(x.name)}</td><td class="r ${x.months > 2.0001 ? 'neg' : ''}">${x.months.toFixed(2)}</td><td>${x.awards.map(w => `${esc(w.id)} ${w.months.toFixed(2)} mo/yr (${w.total} mo over ${w.periodMonths} mo)`).join('<br>')}</td><td>${x.months > 2.0001 ? chip('medium', 'Over 2 months') : chip('ok', 'Within cap')}</td></tr>`).join('');
-  return `<div class="cards"><div class="card"><div class="l">9-month faculty commitments</div><div class="v">${rows.length}</div><div class="s">${new Set(rows.map(r => r.person)).size} people</div></div>
-   <div class="card"><div class="l">Over the NSF 2-month cap</div><div class="v ${over.length ? 'neg' : ''}">${new Set(over.map(r => r.person)).size}</div><div class="s">people, summed across NSF awards</div></div>
-   <div class="card"><div class="l">Summer pay posted (Jun–Aug)</div><div class="v">${fmt(rows.reduce((s, r) => s + r.sumP, 0))}</div><div class="s">this fiscal year's workbook</div></div>
-   <div class="card"><div class="l">Summer pay projected (June)</div><div class="v">${fmt(rows.reduce((s, r) => s + r.sumJ, 0))}</div><div class="s">through ${esc(M.FYE)}</div></div></div>
-  <div class="panel"><h2>Summer salary by person and award</h2><div class="tw"><table><tr><th>Person</th><th>Award · project</th><th>Appt</th><th class="r">Salary months committed</th><th class="r">Per year</th><th>UFIRST period</th><th class="r">Summer posted (Jun–Aug)</th><th class="r">Other months posted</th><th class="r">June projected</th><th class="r">Rest projected</th></tr>
-   ${rows.map(r => `<tr class="click" data-click="${esc(r.code)}"><td>${esc(r.person)}</td><td>${esc(r.awd)} · ${esc(r.code)}<div class="sm mut">${esc(r.award)}</div></td><td>${esc(r.appt)}</td><td class="r">${r.salMonths}${r.csMonths ? `<div class="sm mut">+${r.csMonths} cost share</div>` : ''}</td><td class="r">${r.perYear.toFixed(2)}</td><td class="sm nw">${esc(r.start)} → ${esc(r.end)}</td><td class="r">${fmt(r.sumP)}</td><td class="r">${fmt(r.othP)}</td><td class="r">${fmt(r.sumJ)}</td><td class="r">${fmt(r.othJ)}</td></tr>`).join('') || '<tr><td colspan="10" class="mut">No 9-month commitments found in the UFIRST data.</td></tr>'}</table></div>
-   <div class="pad note">Nine-month faculty are paid for the academic year; summer salary comes from grants as extra months. "Salary months committed" is what UFIRST records for the whole budget period; "per year" divides it by the period length. Posted and projected dollars are what the recon workbook shows on the project where the person's commitment is attached: June, July and August pay is the summer window, and the payroll sheet only reaches back to the first pay date in the workbook you loaded, so earlier summers need earlier workbooks, and July and August of next summer are not projected yet. Pay on other projects the person is charged to is not included.</div></div>
+  const nP = Object.keys(ST.payHist || {}).length;
+  return `<div class="cards"><div class="card"><div class="l">People with payroll history</div><div class="v">${nP}</div><div class="s">${nP ? 'drop more files with Add files' : 'drop the payroll distribution files with Add files'}</div></div>
+   <div class="card"><div class="l">Summer shown</div><div class="v">${esc(sel || '—')}</div><div class="s">May 16 – Aug 15 pay dates</div></div>
+   <div class="card"><div class="l">Grant charges in that summer</div><div class="v ${offRows ? 'neg' : ''}">${fmt(view.reduce((s, h) => s + h.projects.reduce((t, p) => t + p.su, 0), 0))}</div><div class="s">under the savings method this should be near zero</div></div>
+   <div class="card"><div class="l">UFIRST months not whole</div><div class="v">${frac.length}</div><div class="s">of ${ufRows.length} 9-month commitments</div></div></div>
+  <div class="panel"><h2>Salary charged to grants, from payroll history<span class="sp"></span><select data-q="sm|year">${yrs.map(y => `<option ${String(y) === sel ? 'selected' : ''}>${y}</option>`).join('')}</select></h2>
+   <div class="tw"><table><tr><th>Person</th><th class="r">Monthly rate</th><th>Project</th><th class="r">Grant $ Aug–May</th><th class="r">Months</th><th class="r">Grant $ in summer</th><th class="r">Months</th><th>Whole months?</th><th class="r">Whitney pay in summer</th><th class="r">Fund 194 (12-mo option)</th></tr>
+   ${hrows || `<tr><td colspan="10" class="mut">${nP ? 'No grant charges found for that summer.' : 'No payroll history loaded yet. Use Add files and drop the payroll distribution workbooks (the "Payroll or Fellowship Earnings by Cost Center by Person" export).'}</td></tr>`}</table></div>
+   <div class="pad note"><b>How the months are worked out.</b> Monthly rate = the person's pay from Aug 16 to May 15, all funds except 194, divided by 9. Months on a grant = dollars paid from that grant ÷ monthly rate. Salary only, no fringe. Pay is by the dollar, so the result is whole only when the payroll was set up in whole months; anything that is not within 0.1 of a whole month is flagged. The rate is blank when the file does not cover the whole academic year. Whitney pay in summer is everything paid from non-grant funds (101, 107 and so on) in the summer window, and fund 194 is shown separately. Retroactive pay is counted on the date it was paid.</div></div>
+  ${hasUf ? `<div class="panel"><h2>Months committed in UFIRST for 9-month faculty</h2><div class="tw"><table><tr><th>Person</th><th>Award</th><th class="r">Salary months</th><th>Whole?</th><th class="r">Per 12 months</th><th>UFIRST period</th></tr>
+   ${ufRows.map(r => `<tr class="click" data-click="${esc(r.code)}"><td>${esc(r.person)}</td><td>${esc(r.awd)}<div class="sm mut">${esc(r.award)}</div></td><td class="r">${r.salMonths}${r.csMonths ? `<div class="sm mut">+${r.csMonths} cost share</div>` : ''}</td><td>${Math.abs(r.salMonths - Math.round(r.salMonths)) > 0.0001 ? chip('medium', 'Not whole') : chip('ok', 'Whole')}</td><td class="r">${r.perYear.toFixed(2)}</td><td class="sm nw">${esc(r.start)} → ${esc(r.end)}</td></tr>`).join('') || '<tr><td colspan="6" class="mut">No 9-month commitments in the UFIRST data.</td></tr>'}</table></div>
+   <div class="pad note">These are the months the sponsor budget carries, copied from UFIRST exactly as recorded. "Per 12 months" rescales a commitment to a 12-month year so awards with different period lengths can be added up.</div></div>
   <div class="panel"><h2>NSF cap check: salary months per year across all NSF awards</h2><div class="tw"><table><tr><th>Person</th><th class="r">Months per year</th><th>By award</th><th>Status</th></tr>${capRows || '<tr><td colspan="4" class="mut">No 9-month NSF commitments found.</td></tr>'}</table></div>
-   <div class="pad note">NSF generally limits salary compensation for senior personnel to two months per year, summed over all NSF awards. This check annualizes each award's current effort period; confirm against the current NSF PAPPG and each award's terms. Cost-share months are not counted.</div></div>`;
+   <div class="pad note">NSF generally limits salary compensation for senior personnel to two months per year, summed over all NSF awards. This check annualizes each award's current effort period; confirm against the current NSF PAPPG and each award's terms. Cost-share months are not counted.</div></div>` : ''}`;
 }
 /* ---------- award drawer ---------- */
 let OPEN = null, DTAB = 'summary';
@@ -1566,6 +1624,7 @@ try { setTheme(localStorage.getItem('whitney_theme') || 'auto'); } catch (e) {}
       await idb.clear(); saved = [];
       for (const f of window.EMBED.files) { const buf = Uint8Array.from(atob(f.b64), c => c.charCodeAt(0)); const rec = { kind: f.kind, name: f.name, buf, modified: 0 }; await idb.put(rec); saved.push(rec); }
       if (window.EMBED.ufirst) { ST.awardPackages = {}; (window.EMBED.ufirst.awards || []).forEach(p => { ST.awardPackages[p.award.award_id] = Ufirst.slim(p); }); }
+      if (window.EMBED.payHist) ST.payHist = window.EMBED.payHist;
       try { localStorage.setItem('whitney_embed_id', window.EMBED.id); } catch (e) {}
     }
   }
