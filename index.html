@@ -1097,6 +1097,7 @@ const awardCols = () => [
   { id: 'end', h: 'Ends', v: a => a.endDate || '', f: a => a.endDate ? (Engine.farFuture(a.endDate) ? '<span class="mut">no end</span>' : `${a.endDate}${a.daysLeft != null ? `<div class="sm ${a.daysLeft < 0 ? 'neg' : 'mut'}">${a.daysLeft < 0 ? -a.daysLeft + 'd ago' : a.daysLeft + 'd left'}</div>` : ''}`) : '' },
   { id: 'budget', h: 'Budget', r: 1, v: a => a.budget, f: a => fmt(a.budget) },
   { id: 'spent', h: 'Spent + enc.', r: 1, v: a => a.exp + a.enc, f: a => `${fmt(a.exp + a.enc)}<div class="bar"><i class="${a.exp + a.enc > a.budget + 1 ? 'over' : ''}" style="width:${Math.min(100, a.budget > 0 ? (a.exp + a.enc) / a.budget * 100 : 0)}%"></i></div>` },
+  { id: 'left', h: 'Left over', r: 1, v: a => a.budget - a.exp, f: a => `${fmt(a.budget - a.exp)}<div class="sm mut">${a.budget > 0 ? Math.round((a.budget - a.exp) / a.budget * 100) + '% of budget' : ''}</div>`, cls: a => negc(a.budget - a.exp) },
   { id: 'pay', h: 'Payroll proj.', r: 1, v: a => a.payProj, f: a => fmt(a.payProj) },
   { id: 'avail', h: 'Available', r: 1, v: a => a.avail, f: a => fmt(a.avail), cls: a => negc(a.avail) },
   { id: 'proj', h: 'Projected bal.', r: 1, v: a => a.projected, f: a => fmt(a.projected), cls: a => negc(a.projected) },
