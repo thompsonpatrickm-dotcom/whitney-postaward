@@ -5,28 +5,30 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Whitney Post-Award Audit</title>
 <style>
-:root{--bg:#f6f7f9;--surf:#fff;--surf2:#f0f2f5;--ink:#1b2430;--ink2:#505c6b;--mut:#7b8794;--line:#e1e5ea;--acc:#1f5fbf;--acc-bg:#e8f0fc;
---crit:#b3261e;--crit-bg:#fdeceb;--high:#b95000;--high-bg:#fff0e2;--med:#8a6a00;--med-bg:#fff6d6;--low:#4a5f78;--low-bg:#e9eef4;--ok:#1d7a46;--ok-bg:#e5f5ec;
---c1:#2a6fdb;--c2:#7a8aa0;--c3:#c9d6ea;--shadow:0 1px 2px rgba(20,30,50,.06),0 4px 14px rgba(20,30,50,.06)}
-@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#12161c;--surf:#1a2028;--surf2:#222a34;--ink:#e8edf3;--ink2:#a9b4c1;--mut:#7f8b99;--line:#2c3541;--acc:#6fa5f5;--acc-bg:#1d2d47;
---crit:#ff8a80;--crit-bg:#3a1f1d;--high:#ffb066;--high-bg:#3a2a18;--med:#f2d36b;--med-bg:#37300f;--low:#9fb4cc;--low-bg:#242e3a;--ok:#6fd49b;--ok-bg:#16301f;--c1:#6fa5f5;--c2:#8c9bb0;--c3:#324258;--shadow:none}}
+:root{--bg:#f3f5f8;--surf:#fff;--surf2:#e9edf2;--ink:#0f1722;--ink2:#2f3a48;--mut:#566373;--line:#c3ccd6;--acc:#1450b0;--acc-bg:#dfeafb;--on-acc:#fff;
+--crit:#a31d15;--crit-bg:#fde3e1;--high:#a14400;--high-bg:#ffe8d1;--med:#6e5300;--med-bg:#fff0b8;--low:#364b66;--low-bg:#dde6f0;--ok:#16653a;--ok-bg:#d9f1e3;
+--c1:#1f5fc9;--c2:#6b7c93;--c3:#bcd0ee;--shadow:0 1px 2px rgba(20,30,50,.10),0 4px 14px rgba(20,30,50,.08)}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0d1218;--surf:#161d26;--surf2:#222d3a;--ink:#f5f8fc;--ink2:#d0d9e4;--mut:#a9b5c3;--line:#3e4d5f;--acc:#8db8ff;--acc-bg:#1d3253;--on-acc:#0a1424;
+--crit:#ff9d94;--crit-bg:#451f1d;--high:#ffbe85;--high-bg:#432c15;--med:#ffe083;--med-bg:#40360c;--low:#b7cbe2;--low-bg:#2a3645;--ok:#7fe0a8;--ok-bg:#16361f;--c1:#8db8ff;--c2:#9fb0c5;--c3:#3b4f6b;--shadow:none;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#0d1218;--surf:#161d26;--surf2:#222d3a;--ink:#f5f8fc;--ink2:#d0d9e4;--mut:#a9b5c3;--line:#3e4d5f;--acc:#8db8ff;--acc-bg:#1d3253;--on-acc:#0a1424;
+--crit:#ff9d94;--crit-bg:#451f1d;--high:#ffbe85;--high-bg:#432c15;--med:#ffe083;--med-bg:#40360c;--low:#b7cbe2;--low-bg:#2a3645;--ok:#7fe0a8;--ok-bg:#16361f;--c1:#8db8ff;--c2:#9fb0c5;--c3:#3b4f6b;--shadow:none;color-scheme:dark}
 *{box-sizing:border-box}html,body{margin:0}
-body{font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+body{font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink)}
 button,select,input,textarea{font:inherit;color:inherit}
 header{position:sticky;top:0;z-index:20;background:var(--surf);border-bottom:1px solid var(--line);padding:10px 20px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
-header h1{font-size:16px;margin:0;font-weight:650}
-header .sub{color:var(--mut);font-size:12px}
+header h1{font-size:18px;margin:0;font-weight:650}
+header .sub{color:var(--ink2);font-size:13px}
 .sp{flex:1}
-.btn{border:1px solid var(--line);background:var(--surf);border-radius:8px;padding:6px 12px;cursor:pointer}
-.btn:hover{background:var(--surf2)}.btn.pri{background:var(--acc);color:#fff;border-color:var(--acc)}.btn.sm{padding:3px 8px;font-size:12px}
+.btn{border:1px solid var(--mut);background:var(--surf);border-radius:8px;padding:6px 12px;cursor:pointer}
+.btn:hover{background:var(--surf2)}.btn.pri{background:var(--acc);color:var(--on-acc);border-color:var(--acc);font-weight:600}.btn.sm{padding:3px 8px;font-size:13px}
 nav{display:flex;gap:2px;padding:0 20px;background:var(--surf);border-bottom:1px solid var(--line);overflow-x:auto}
-nav button{border:0;background:none;padding:10px 14px;cursor:pointer;color:var(--ink2);border-bottom:2px solid transparent;white-space:nowrap}
+nav button{border:0;background:none;padding:11px 14px;cursor:pointer;font-size:15px;color:var(--ink2);border-bottom:2px solid transparent;white-space:nowrap}
 nav button.on{color:var(--acc);border-color:var(--acc);font-weight:600}
 nav .n{background:var(--surf2);border-radius:10px;padding:0 7px;font-size:11px;margin-left:5px}
 main{padding:18px 20px 60px;max-width:1500px;margin:0 auto}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:18px}
 .card{background:var(--surf);border:1px solid var(--line);border-radius:12px;padding:12px 14px;box-shadow:var(--shadow)}
-.card .l{font-size:12px;color:var(--ink2)}.card .v{font-size:22px;font-weight:650;margin-top:2px;font-variant-numeric:tabular-nums}.card .s{font-size:12px;color:var(--mut)}
+.card .l{font-size:13px;color:var(--ink2)}.card .v{font-size:24px;font-weight:650;margin-top:2px;font-variant-numeric:tabular-nums}.card .s{font-size:13px;color:var(--ink2)}
 .panel{background:var(--surf);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);margin-bottom:18px}
 .panel>h2{font-size:14px;margin:0;padding:12px 14px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .panel>h2 .sp{flex:1}.pad{padding:14px}
@@ -36,10 +38,10 @@ main{padding:18px 20px 60px;max-width:1500px;margin:0 auto}
 .tw{overflow:auto;max-height:70vh}
 table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
 th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
-th{position:sticky;top:0;background:var(--surf2);font-size:12px;color:var(--ink2);font-weight:600;cursor:pointer;white-space:nowrap;z-index:2}
+th{position:sticky;top:0;background:var(--surf2);font-size:13px;color:var(--ink);font-weight:650;cursor:pointer;white-space:nowrap;z-index:2}
 td.r,th.r{text-align:right}tr.click{cursor:pointer}tr.click:hover td{background:var(--surf2)}
-td.neg{color:var(--crit);font-weight:600}.mut{color:var(--mut)}.sm{font-size:12px}.nw{white-space:nowrap}
-.chip{display:inline-flex;align-items:center;gap:4px;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:600;white-space:nowrap}
+td.neg{color:var(--crit);font-weight:600}.mut{color:var(--mut)}.sm{font-size:13px}.nw{white-space:nowrap}
+.chip{display:inline-flex;align-items:center;gap:4px;border-radius:10px;padding:2px 9px;font-size:12px;font-weight:650;white-space:nowrap}
 .chip.critical{background:var(--crit-bg);color:var(--crit)}.chip.high{background:var(--high-bg);color:var(--high)}.chip.medium{background:var(--med-bg);color:var(--med)}
 .chip.low{background:var(--low-bg);color:var(--low)}.chip.ok{background:var(--ok-bg);color:var(--ok)}.chip.neutral{background:var(--surf2);color:var(--ink2)}
 .bar{height:6px;border-radius:3px;background:var(--surf2);min-width:70px;overflow:hidden}.bar i{display:block;height:100%;background:var(--c1)}.bar i.over{background:var(--crit)}
@@ -60,9 +62,9 @@ td.neg{color:var(--crit);font-weight:600}.mut{color:var(--mut)}.sm{font-size:12p
 .flag .t{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.flag .d{margin-top:4px;color:var(--ink2)}.flag .a{margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .flag.done{opacity:.55}
 select.st{border:1px solid var(--line);border-radius:6px;padding:2px 4px;background:var(--surf)}
-.chart{width:100%;height:230px}.chart text{fill:var(--mut);font-size:11px}.tip{position:fixed;pointer-events:none;background:#101820;color:#fff;border-radius:8px;padding:6px 9px;font-size:12px;z-index:200;display:none;max-width:260px}
+.chart{width:100%;height:230px}.chart text{fill:var(--ink2);font-size:12px}.tip{position:fixed;pointer-events:none;background:#101820;color:#fff;border-radius:8px;padding:6px 9px;font-size:12px;z-index:200;display:none;max-width:260px}
 .legend{display:flex;gap:14px;font-size:12px;color:var(--ink2);margin:6px 0}.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
-.note{font-size:12px;color:var(--mut)}textarea{width:100%;border:1px solid var(--line);border-radius:8px;background:var(--surf);padding:8px}
+.note{font-size:13px;color:var(--ink2)}textarea{width:100%;border:1px solid var(--line);border-radius:8px;background:var(--surf);padding:8px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:800px){.grid2{grid-template-columns:1fr}}
 .rule{display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-bottom:1px solid var(--line)}.rule b{min-width:150px}
 label.f{display:flex;gap:6px;align-items:center;margin:4px 0}
@@ -78,6 +80,7 @@ mark{background:var(--med-bg);color:inherit}
   <button class="btn pri" id="addBtn">Add files</button>
   <button class="btn pri" id="impAwd" title="Drop the UFIRST capture / award packages and the latest recon workbook">Import award</button>
   <button class="btn" id="linkBtn" title="Read the newest workbook straight from a synced OneDrive / Google Drive folder">Link folder</button>
+  <button class="btn" id="themeBtn" title="Switch between automatic, light and dark">Theme: auto</button>
   <button class="btn" id="expFlags">Export flags</button>
   <button class="btn" id="expState">Save notes</button>
   <button class="btn" id="impState">Load notes</button>
@@ -184,6 +187,7 @@ const RULES = {
   EFFORT_SUM:     { sev: 'medium',   cat: 'Effort',       title: 'Employee distribution does not total 100% (verify other jobs/records)' },
   EFFORT_VAR:     { sev: 'high',     cat: 'Effort',       title: 'Actual effort differs from commitment' },
   EFFORT_MISSING: { sev: 'medium',   cat: 'Effort',       title: 'Committed person is not being charged' },
+  SUMMER_CAP:     { sev: 'medium',   cat: 'Effort',       title: 'NSF salary months for a 9-month appointment exceed 2 per year' },
   EFFORT_UNLISTED:{ sev: 'low',      cat: 'Effort',       title: 'Person charged but no commitment on file' },
   TRK_NOT_LEDGER: { sev: 'low',      cat: 'Tracker',      title: 'Tracker award not found in the ledger' },
   TRK_EXPIRED:    { sev: 'low',      cat: 'Tracker',      title: 'Tracker lists an expired award (placeholder?)' },
@@ -271,6 +275,23 @@ function parseWorkbook(XLSX, buf, fileName) {
     }
   }
   out.kinds = Object.keys(out.sheets);
+  return out;
+}
+
+/* annualized salary months a 9-month appointee has requested on NSF awards (NSF allows 2 months per year across all NSF awards) */
+function nsfSummer(pkgs, ref) {
+  const out = {};
+  Object.values(pkgs || {}).forEach(pk => {
+    if (!/NATL SCIENCE|NATIONAL SCIENCE|\bNSF\b/i.test((pk.award && pk.award.sponsor) || '')) return;
+    ((pk.effort && pk.effort.current_period) || []).forEach(r => {
+      if (!/9/.test(r.appointment || '') || !r.salary_request_months) return;
+      const parts = r.person.trim().split(/\s+/), key = parts[parts.length - 1].toLowerCase().replace(/[^a-z]/g, '') + '|' + (parts[0][0] || '').toLowerCase();
+      const pm = Math.max(1, Math.round(dayDiff(r.end, r.start) / 30.4375)), ann = r.salary_request_months * 12 / pm;
+      const x = out[key] || (out[key] = { name: r.person, months: 0, awards: [], codes: [] });
+      x.months += ann; x.awards.push({ id: pk.award.award_id, sponsorId: pk.award.sponsor_award_id, months: ann, total: r.salary_request_months, periodMonths: pm, start: r.start, end: r.end });
+      pk.projects.forEach(p => x.codes.push(p.project_id));
+    });
+  });
   return out;
 }
 
@@ -584,6 +605,14 @@ function build(files, userCfg, state) {
     if (cs.length) Object.values(actual).forEach(x => { if (facultyOnly && !a.pp.some(p => p.name === x.name && /faculty/i.test(p.cat + ' ' + p.type))) return; if (x.lines && !cs.some(c => norm(x.name).includes(norm(c.name.split(',')[0])))) flag('EFFORT_UNLISTED', a, { disc: 'u' + x.name, detail: `${x.name} is projected at ${x.pct.toFixed(1)}% on this award but is not in the commitments on file.`, amount: 0 }); });
   });
 
+  /* NSF 2-month cap on salary for 9-month appointments, across every NSF award on file */
+  Object.entries(nsfSummer(state.awardPackages, ref)).forEach(([k, x]) => {
+    if (x.months <= 2.0001) return;
+    const a = x.codes.map(c => awards[c]).find(Boolean) || null;
+    flag('SUMMER_CAP', a, { code: a ? a.code : 'EFFORT', award: a ? a.desc : x.name, disc: k, amount: 0,
+      detail: `${x.name} has ${x.months.toFixed(2)} salary months per year requested across NSF awards (${x.awards.map(w => w.id + ' ' + w.months.toFixed(2)).join(', ')}). NSF limits salary compensation to 2 months per year, summed over all NSF awards. Confirm against the current NSF PAPPG and the award terms.` });
+  });
+
   /* tracker flags */
   const today = ref;
   trackerRows.forEach(t => {
@@ -627,7 +656,7 @@ function build(files, userCfg, state) {
     kinds: Object.keys(S), counts: { balances: (S.balances || []).length, expenses: (S.expenses || []).length, payroll: (S.payroll || []).length, projPayroll: (S.projPayroll || []).length, tracker: trackerRows.length } };
 }
 
-const api = { DEFAULTS, RULES, parseWorkbook, build, iso, dayDiff, addDays, ym, fyEnd, farFuture };
+const api = { DEFAULTS, RULES, parseWorkbook, build, nsfSummer, iso, dayDiff, addDays, ym, fyEnd, farFuture };
 if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Engine = api;
 })(typeof window !== 'undefined' ? window : globalThis);
 </script>
@@ -1050,11 +1079,11 @@ const negc = r => r < 0 ? 'neg' : '';
 /* ---------- views ---------- */
 function render() {
   $('#sub').textContent = M ? `Data as of ${M.ref} · FY ends ${M.FYE} · ${M.awards.length} awards in scope · ${FILES.map(f => f.fileName).join(' + ')}${Object.keys(ST.awardPackages || {}).length ? ' + UFIRST (' + Object.keys(ST.awardPackages).length + ' awards)' : ''}` : 'No data loaded';
-  const tabs = [['overview', 'Overview'], ['flags', 'Flags', M && flagsOpen(M.flags).length], ['awards', 'Awards', M && M.awards.length], ['txns', 'Transactions'], ['people', 'Payroll & effort'], ['tracker', 'Tracker (MPAR)', M && M.tracker.length || null], ['settings', 'Rules & settings']];
+  const tabs = [['overview', 'Overview'], ['flags', 'Flags', M && flagsOpen(M.flags).length], ['awards', 'Awards', M && M.awards.length], ['txns', 'Transactions'], ['people', 'Payroll & effort'], ['summer', 'Summer salary'], ['tracker', 'Tracker (MPAR)', M && M.tracker.length || null], ['settings', 'Rules & settings']];
   $('#nav').innerHTML = tabs.map(([k, t, n]) => `<button data-view="${k}" class="${VIEW === k ? 'on' : ''}">${t}${n ? `<span class="n">${n}</span>` : ''}</button>`).join('');
   const main = $('#main');
   if (!M) { main.innerHTML = emptyHTML(); return; }
-  main.innerHTML = ({ overview: vOverview, flags: vFlags, awards: vAwards, txns: vTxns, people: vPeople, tracker: vTracker, settings: vSettings }[VIEW])();
+  main.innerHTML = ({ overview: vOverview, flags: vFlags, awards: vAwards, txns: vTxns, people: vPeople, summer: vSummer, tracker: vTracker, settings: vSettings }[VIEW])();
   if (VIEW === 'settings') bindSettings();
 }
 function emptyHTML() {
@@ -1195,6 +1224,45 @@ function bindSettings() {
   $('#clearNotes').onclick = () => { if (confirm('Erase every note, status, commitment and manual flag saved in this browser?')) { Object.assign(ST, { flagState: {}, manualFlags: [], commitments: {}, trackerLinks: {}, docs: {} }); save(); rebuild(); } };
 }
 
+/* ---------- summer salary (9-month appointments) ---------- */
+function summerRows() {
+  const cap = Engine.nsfSummer(ST.awardPackages, M.ref), nm = n => String(n || '').toLowerCase().replace(/[^a-z]/g, ''), rows = [];
+  const fye = M.FYE, jun1 = fye.slice(0, 4) + '-06-01', dd = Engine.dayDiff;
+  Object.entries(ST.commitments).forEach(([code, list]) => list.forEach(c => {
+    const m = String(c.source || '').match(/^UFIRST (AWD\d+) effort (\S+) to (\S+) \((.*)\)$/); if (!m || !/9/.test(m[4])) return;
+    const a = M.byCode[code]; if (!a) return; const pk = ST.awardPackages[m[1]], last = nm(c.name.split(',')[0]);
+    const eff = ((pk && pk.effort && pk.effort.current_period) || []).filter(r => nm(r.person.split(/\s+/).pop()) === last);
+    const sal = eff.reduce((s, r) => s + r.salary_request_months, 0), cs = eff.reduce((s, r) => s + r.cost_share_months, 0);
+    const pm = Math.max(1, Math.round(dd(m[3], m[2]) / 30.4375));
+    let sumP = 0, othP = 0;
+    a.pay.filter(p => nm((p.name || '').split(',')[0]) === last).forEach(p => { const mo = (p.payEnd || p.date || '').slice(5, 7); if (mo === '06' || mo === '07' || mo === '08') sumP += p.total; else othP += p.total; });
+    let sumJ = 0, othJ = 0;
+    a.pp.filter(p => nm((p.name || '').split(',')[0]) === last).forEach(p => {
+      const from = [M.ref, p.begin || M.ref].sort().pop(), to = [fye, p.end || fye].sort()[0]; if (to < from) return;
+      const days = dd(to, from) + 1, s0 = [from, jun1].sort().pop(), sd = to >= s0 ? dd(to, s0) + 1 : 0;
+      sumJ += p.total * sd / days; othJ += p.total * (days - sd) / days;
+    });
+    const k = Object.keys(cap).find(k => k.startsWith(last + '|')), nsf = k ? cap[k] : null;
+    rows.push({ code, award: a.desc, awd: m[1], sponsor: pk ? pk.award.sponsor : '', person: c.name, appt: m[4], salMonths: sal, csMonths: cs, perYear: sal * 12 / pm, periodMonths: pm, start: m[2], end: m[3],
+      sumP, othP, sumJ, othJ, nsfYear: nsf ? nsf.months : null });
+  }));
+  return rows.sort((x, y) => x.person.localeCompare(y.person) || x.code.localeCompare(y.code));
+}
+function vSummer() {
+  if (!Object.keys(ST.awardPackages || {}).length) return `<div class="panel"><h2>Summer salary</h2><div class="pad">Summer salary is tracked for 9-month faculty using their UFIRST effort commitments. Use <b>Import award</b> to load the UFIRST awards first.</div></div>`;
+  const rows = summerRows(), over = rows.filter(r => r.nsfYear != null && r.nsfYear > 2.0001);
+  const seen = new Set(), cap = Engine.nsfSummer(ST.awardPackages, M.ref);
+  const capRows = Object.values(cap).sort((a, b) => b.months - a.months).map(x => `<tr><td>${esc(x.name)}</td><td class="r ${x.months > 2.0001 ? 'neg' : ''}">${x.months.toFixed(2)}</td><td>${x.awards.map(w => `${esc(w.id)} ${w.months.toFixed(2)} mo/yr (${w.total} mo over ${w.periodMonths} mo)`).join('<br>')}</td><td>${x.months > 2.0001 ? chip('medium', 'Over 2 months') : chip('ok', 'Within cap')}</td></tr>`).join('');
+  return `<div class="cards"><div class="card"><div class="l">9-month faculty commitments</div><div class="v">${rows.length}</div><div class="s">${new Set(rows.map(r => r.person)).size} people</div></div>
+   <div class="card"><div class="l">Over the NSF 2-month cap</div><div class="v ${over.length ? 'neg' : ''}">${new Set(over.map(r => r.person)).size}</div><div class="s">people, summed across NSF awards</div></div>
+   <div class="card"><div class="l">Summer pay posted (Jun–Aug)</div><div class="v">${fmt(rows.reduce((s, r) => s + r.sumP, 0))}</div><div class="s">this fiscal year's workbook</div></div>
+   <div class="card"><div class="l">Summer pay projected (June)</div><div class="v">${fmt(rows.reduce((s, r) => s + r.sumJ, 0))}</div><div class="s">through ${esc(M.FYE)}</div></div></div>
+  <div class="panel"><h2>Summer salary by person and award</h2><div class="tw"><table><tr><th>Person</th><th>Award · project</th><th>Appt</th><th class="r">Salary months committed</th><th class="r">Per year</th><th>UFIRST period</th><th class="r">Summer posted (Jun–Aug)</th><th class="r">Other months posted</th><th class="r">June projected</th><th class="r">Rest projected</th></tr>
+   ${rows.map(r => `<tr class="click" data-click="${esc(r.code)}"><td>${esc(r.person)}</td><td>${esc(r.awd)} · ${esc(r.code)}<div class="sm mut">${esc(r.award)}</div></td><td>${esc(r.appt)}</td><td class="r">${r.salMonths}${r.csMonths ? `<div class="sm mut">+${r.csMonths} cost share</div>` : ''}</td><td class="r">${r.perYear.toFixed(2)}</td><td class="sm nw">${esc(r.start)} → ${esc(r.end)}</td><td class="r">${fmt(r.sumP)}</td><td class="r">${fmt(r.othP)}</td><td class="r">${fmt(r.sumJ)}</td><td class="r">${fmt(r.othJ)}</td></tr>`).join('') || '<tr><td colspan="10" class="mut">No 9-month commitments found in the UFIRST data.</td></tr>'}</table></div>
+   <div class="pad note">Nine-month faculty are paid for the academic year; summer salary comes from grants as extra months. "Salary months committed" is what UFIRST records for the whole budget period; "per year" divides it by the period length. Posted and projected dollars are what the recon workbook shows on the project where the person's commitment is attached: June, July and August pay is the summer window, and the workbook only holds the current fiscal year, so July and August of next summer are not projected yet. Pay on other projects the person is charged to is not included.</div></div>
+  <div class="panel"><h2>NSF cap check: salary months per year across all NSF awards</h2><div class="tw"><table><tr><th>Person</th><th class="r">Months per year</th><th>By award</th><th>Status</th></tr>${capRows || '<tr><td colspan="4" class="mut">No 9-month NSF commitments found.</td></tr>'}</table></div>
+   <div class="pad note">NSF generally limits salary compensation for senior personnel to two months per year, summed over all NSF awards. This check annualizes each award's current effort period; confirm against the current NSF PAPPG and each award's terms. Cost-share months are not counted.</div></div>`;
+}
 /* ---------- award drawer ---------- */
 let OPEN = null, DTAB = 'summary';
 function openAward(code, keep) {
@@ -1479,6 +1547,16 @@ $('#linkBtn').onclick = async () => {
 setInterval(() => syncLinks(false), 120000);
 window.addEventListener('focus', () => syncLinks(false));
 document.addEventListener('visibilitychange', () => { if (!document.hidden) syncLinks(false); });
+
+/* ---------- theme: auto (follows the computer) / light / dark ---------- */
+const THEMES = ['auto', 'light', 'dark'];
+function setTheme(v) {
+  const r = document.documentElement; if (v === 'auto') r.removeAttribute('data-theme'); else r.setAttribute('data-theme', v);
+  const b = $('#themeBtn'); if (b) b.textContent = 'Theme: ' + v;
+  try { localStorage.setItem('whitney_theme', v); } catch (e) {}
+}
+$('#themeBtn').onclick = () => { let c = 'auto'; try { c = localStorage.getItem('whitney_theme') || 'auto'; } catch (e) {} setTheme(THEMES[(THEMES.indexOf(c) + 1) % 3]); };
+try { setTheme(localStorage.getItem('whitney_theme') || 'auto'); } catch (e) {}
 
 (async function init() {
   await idb.open();
