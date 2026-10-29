@@ -76,18 +76,20 @@ mark{background:var(--med-bg);color:inherit}
   <div><h1>Whitney Post-Award Audit</h1><div class="sub" id="sub">No data loaded</div><div class="sub" id="live"></div></div>
   <div class="sp"></div>
   <button class="btn pri" id="addBtn">Add files</button>
+  <button class="btn pri" id="impAwd" title="Drop the UFIRST capture / award packages and the latest recon workbook">Import award</button>
   <button class="btn" id="linkBtn" title="Read the newest workbook straight from a synced OneDrive / Google Drive folder">Link folder</button>
   <button class="btn" id="expFlags">Export flags</button>
   <button class="btn" id="expState">Save notes</button>
   <button class="btn" id="impState">Load notes</button>
   <input type="file" id="fileIn" multiple accept=".xlsx,.xls,.xlsm,.csv" hidden>
+  <input type="file" id="awardIn" multiple accept=".json,.xlsx,.xlsm,.xls" hidden>
   <input type="file" id="stateIn" accept=".json" hidden>
 </header>
 <nav id="nav"></nav>
 <main id="main"></main>
 <div class="scrim" id="scrim"></div>
 <aside class="drawer" id="drawer"></aside>
-<div class="drop" id="drop">Drop the weekly workbook and/or the MPAR tracker</div>
+<div class="drop" id="drop">Drop the weekly workbook, the MPAR tracker, or UFIRST award files (.json)</div>
 <div class="tip" id="tip"></div>
 
 <script>/*! xlsx.js (C) 2013-present SheetJS -- http://sheetjs.com */
@@ -566,16 +568,20 @@ function build(files, userCfg, state) {
     a.actualEffort = actual;
     const norm = n => n.toLowerCase().replace(/[^a-z]/g, '');
     cs.forEach(c => {
+      const pe = (String(c.source || '').match(/^UFIRST \S+ effort \S+ to (\d{4}-\d{2}-\d{2})/) || [])[1];
+      const early = !!pe && dayDiff(pe, ref) > (cfg.ufirstJudgeDays || 120);   // UFIRST % is months ÷ period months; not comparable to one pay period
       const pct = c.pct != null && c.pct !== '' ? +c.pct : (c.months ? +c.months / 12 * 100 : null);
       if (pct == null) return;
       const m = Object.values(actual).find(x => norm(x.name).includes(norm(c.name.split(',')[0])) || norm(c.name).includes(norm(x.name.split(',')[0])));
+      if (early) return;
       if (!m) { flag('EFFORT_MISSING', a, { disc: 'm' + c.name, detail: `${c.name} (${c.role || 'personnel'}) is committed at ${pct.toFixed(1)}% effort but has no payroll or projection on this award.`, amount: 0 }); return; }
       if (m.pct != null && m.lines && pct > 0) {
         const act = m.pct; const rel = Math.abs(act - pct) / pct * 100;
         if (rel >= cfg.effortVarPct) flag('EFFORT_VAR', a, { disc: 'v' + c.name, detail: `${c.name}: committed ${pct.toFixed(1)}% vs ${act.toFixed(1)}% currently distributed (${rel.toFixed(0)}% relative change; threshold ${cfg.effortVarPct}%). Confirm prior approval is not required.`, amount: 0 });
       }
     });
-    if (cs.length) Object.values(actual).forEach(x => { if (x.lines && !cs.some(c => norm(x.name).includes(norm(c.name.split(',')[0])))) flag('EFFORT_UNLISTED', a, { disc: 'u' + x.name, detail: `${x.name} is projected at ${x.pct.toFixed(1)}% on this award but is not in the commitments on file.`, amount: 0 }); });
+    const facultyOnly = cs.length && cs.every(c => /^UFIRST /.test(c.source || ''));
+    if (cs.length) Object.values(actual).forEach(x => { if (facultyOnly && !a.pp.some(p => p.name === x.name && /faculty/i.test(p.cat + ' ' + p.type))) return; if (x.lines && !cs.some(c => norm(x.name).includes(norm(c.name.split(',')[0])))) flag('EFFORT_UNLISTED', a, { disc: 'u' + x.name, detail: `${x.name} is projected at ${x.pct.toFixed(1)}% on this award but is not in the commitments on file.`, amount: 0 }); });
   });
 
   /* tracker flags */
@@ -591,7 +597,7 @@ function build(files, userCfg, state) {
       return;
     }
     a.sponsorTracker = t.sponsor;
-    const miss = []; if (!t.effortMonths) miss.push('PI effort months'); if (!t.iacuc) miss.push('IACUC'); if (!t.rsh) miss.push('RSH300'); if (!t.costShare) miss.push('cost share'); if (!t.subStatus) miss.push('subaward status');
+    const miss = []; if (!t.effortMonths) miss.push('PI effort months'); if (!t.iacuc) miss.push('IACUC'); if (!t.costShare) miss.push('cost share'); if (!t.subStatus) miss.push('subaward status');
     if (miss.length) flag('TRK_MISSING', a, { disc: t.awardId + t.code, detail: `Tracker blank: ${miss.join(', ')}.` });
     if (t.costShare && parseFloat(t.costShare) > 0) flag('TRK_COSTSHARE', a, { disc: t.awardId, detail: `Tracker shows ${t.costShare} cost share; confirm it is being recorded and documented.` });
     if (t.end && a.end && t.end !== a.end && t.end !== a.bEnd) flag('TRK_DATES', a, { disc: t.awardId + 'e', detail: `Tracker end ${t.end} vs ledger project end ${a.end}${a.bEnd ? ' / budget end ' + a.bEnd : ''}.` });
@@ -625,6 +631,303 @@ const api = { DEFAULTS, RULES, parseWorkbook, build, iso, dayDiff, addDays, ym, 
 if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Engine = api;
 })(typeof window !== 'undefined' ? window : globalThis);
 </script>
+<script>/* Whitney UFIRST import: parses a UFIRST capture (whitney.ufirst_capture/v1) or an already-parsed award package
+   (whitney.award_package/v1, whitney.award_packages/v1) and derives tracker rows, effort commitments and detail text.
+   Pure functions, no DOM. Port of build2.py from the data package. */
+(function (root) {
+'use strict';
+const PID = /^(P0|00)\d{6}$/;
+const money = s => { s = String(s == null ? '' : s).replace(/[$,*\s]/g, ''); if (s === '' || s === '-') return 0; const neg = /^\(.*\)$/.test(s); const n = parseFloat(s.replace(/[()]/g, '')); return isFinite(n) ? (neg ? -n : n) : 0; };
+const mdy = s => { const m = String(s || '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); return m ? `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}` : null; };
+const norm = n => String(n || '').toLowerCase().replace(/[^a-z]/g, '');
+const lines = t => String(t || '').split('\n');
+const pctNum = s => parseFloat(String(s || '').trim().replace('%', '')) || 0;
+const addDays = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const todayIso = () => new Date().toISOString().slice(0, 10);
+const r2 = n => Math.round(n * 100) / 100;
+
+/* ---------- kind detection ---------- */
+function detect(o) {
+  if (!o || typeof o !== 'object') return null;
+  if (o.awards && !Array.isArray(o.awards) && (o.schema === 'whitney.ufirst_capture/v1' || Object.values(o.awards).some(x => x && typeof x === 'object' && 'projects' in x && 'allocations' in x))) return 'capture';
+  if (o.schema === 'whitney.award_packages/v1' && Array.isArray(o.awards)) return 'packages';
+  if (o.schema === 'whitney.award_package/v1' && o.award) return 'package';
+  return null;
+}
+
+/* ---------- SmartForm section parsers (ported from build2.py) ---------- */
+function parseProjects(t) {
+  const out = [];
+  for (const l of lines(t)) {
+    const p = l.split('\t');
+    if (p.length >= 9 && PID.test(p[1].trim()))
+      out.push({ project_id: p[1].trim(), project_manager: p[2].trim(), unit: p[3].trim(), unit_id: p[4].trim(), title: p[5].trim(),
+        idc_rate: pctNum(p[6]), start: mdy(p[7]), end: mdy(p[8]) });
+  }
+  return out;
+}
+function parseAllocations(t) {
+  const out = [];
+  for (const l of lines(t)) {
+    const p = l.split('\t');
+    if (p.length >= 7 && PID.test(p[0].trim()))
+      out.push({ project_id: p[0].trim(), name: p[1].trim(), start: mdy(p[2]), end: mdy(p[3]), released: p[4].trim().toLowerCase() === 'yes',
+        budget_release: money(p[5]), sponsor_authorized: money(p[6]) });
+  }
+  return out;
+}
+const EFF_RE = /^([^\t]+)\t(\d+\/\d+\/\d{4})\t(\d+\/\d+\/\d{4})\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)/;
+function parseEffort(t) {
+  t = String(t || ''); const rows = []; let notes = ''; const mods = [];
+  for (const l of lines(t)) {
+    const m = l.match(EFF_RE); if (!m) continue;
+    rows.push({ person: m[1].trim(), start: mdy(m[2]), end: mdy(m[3]), appointment: m[4].trim(), fte: parseFloat(m[5]) || 0,
+      cost_share_months: parseFloat(m[6]) || 0, cost_share_pct: pctNum(m[7]), salary_request_months: parseFloat(m[8]) || 0,
+      salary_request_pct: pctNum(m[9]), total_effort_months: parseFloat(m[10]) || 0 });
+  }
+  if (t.includes('Effort Commitment Notes:')) notes = t.split('Effort Commitment Notes:')[1].trim();
+  if (t.includes('Award/Mod ID')) {
+    const seg = t.split('Award/Mod ID')[1].split('Effort Commitment Notes:')[0];
+    lines(seg).slice(1).forEach(l => { const p = l.split('\t'); if (p[0] && /^AWD\d+/.test(p[0])) mods.push({ id: p[0], type: p.length > 2 ? p[1] : '', note: p[p.length - 1].trim() }); });
+  }
+  return { rows, notes, mods };
+}
+function parseCfda(t) {
+  t = String(t || ''); const cf = [...t.matchAll(/^(\d{2}\.\d{3})\t(yes|no)/gm)].map(m => ({ cfda: m[1], primary: m[2] === 'yes' }));
+  let fain = null; const k = 'Federal Award Identification Number (if applicable):';
+  if (t.includes(k)) fain = (t.split(k)[1].trim().split('\n')[0] || '').trim() || null;
+  return { cfda: cf, fain };
+}
+const parseIds = (t, pre) => lines(t).filter(l => l.startsWith(pre)).map(l => { const p = l.split('\t'); return { id: p[0], name: p[1], pi: p[2], x: p[3], state: p[4] }; });
+const parseKeypers = t => lines(t).map(l => l.split('\t')).filter(p => p[0] === 'View' && p.length >= 5).map(p => ({ name: p[1], role: p[2], dsr810: p[3], rsh500: p[4] }));
+const CATMAP = { '-Person': 'Salaries - Faculty/Staff (Person)', '-OPS': 'Salaries - OPS', '-Post Doc': 'Salaries - Post Doc', '-Graduate Student': 'Salaries - Graduate Student',
+  '-Undergraduate Student': 'Salaries - Undergraduate Student', 'Subward Direct Does Not Incur F&A': 'Subaward Direct Does Not Incur F&A' };
+function parseBudgetRows(b) {
+  return (b.rows || []).map(r => { const lab = r[0], v = r.slice(1).map(money); while (v.length < 5) v.push(0);
+    return { category: CATMAP[lab] || lab, category_raw: lab, baseline: v[0], rollup_adjustments: v[1], adjustment: v[2], active_allocation_total: v[3], active_award_total: v[4] }; });
+}
+function curPeriod(rows, ref) {
+  if (!rows.length) return [];
+  const per = [...new Set(rows.map(r => r.start + '|' + r.end))].sort().map(s => s.split('|'));
+  let pick = per.filter(p => p[0] <= ref && ref <= p[1]);
+  if (!pick.length) pick = per.filter(p => p[0] <= ref).slice(-1);
+  if (!pick.length) pick = per.slice(0, 1);
+  return rows.filter(r => r.start === pick[0][0] && r.end === pick[0][1]);
+}
+
+/* ---------- general / personnel / terms / compliance (label-driven: no sample page text was available) ---------- */
+function kvPairs(text) {
+  const L = lines(text).map(l => l.replace(/\s+$/, '')); const kv = {};
+  for (let i = 0; i < L.length; i++) {
+    const l = L[i].trim(); if (!l) continue;
+    if (l.includes('\t')) { const p = l.split('\t').map(x => x.trim()); if (p[0].endsWith(':') && p[1]) { kv[p[0].replace(/:$/, '')] = p[1]; continue; } }
+    let m = l.match(/^([A-Za-z][^:\t]{2,70}):\s+(\S.*)$/); if (m) { kv[m[1].trim()] = m[2].trim(); continue; }
+    if (/^[A-Za-z][^:\t]{2,70}:$/.test(l)) { const nx = (L[i + 1] || '').trim(); if (nx && !/:$/.test(nx)) { kv[l.slice(0, -1)] = nx; i++; } }
+  }
+  return kv;
+}
+const pick = (kv, re) => { for (const k of Object.keys(kv)) if (re.test(k)) return kv[k]; return null; };
+function parseGeneral(text, fin) {
+  const kv = Object.assign({}, kvPairs(text), kvPairs(fin));
+  const g = {
+    title: pick(kv, /award title|^title$|project title/i), state: pick(kv, /award status|^status$/i), pi: pick(kv, /principal investigator|^pi$|pd\/pi/i),
+    resp_unit: pick(kv, /responsible unit(?! id)/i), resp_unit_id: pick(kv, /responsible unit id/i), unit_admin: pick(kv, /unit admin/i), cg_contact: pick(kv, /c&g|cg contact|grant.*contact/i),
+    sponsor: pick(kv, /^(primary )?sponsor( name)?$/i), sponsor_award_id: pick(kv, /sponsor award (id|number|no)/i), prime_sponsor: pick(kv, /^prime sponsor( name)?$/i),
+    prime_sponsor_award_id: pick(kv, /prime.*(award )?(id|number)/i),
+    start: mdy(pick(kv, /(award |project )?(start|begin(ning)?) date/i)), end: mdy(pick(kv, /(award |project )?end date/i)), date_awarded: mdy(pick(kv, /date awarded|award date|awarded/i)),
+    budget_released: money(pick(kv, /total budget release/i)), sponsor_authorized: money(pick(kv, /sponsor authorized.*(amount|total)|total sponsor authorized/i)),
+    direct: money(pick(kv, /authorized direct/i)), indirect: money(pick(kv, /authorized indirect/i)),
+    cost_share: money(pick(kv, /total award cost share/i)), anticipated: money(pick(kv, /total anticipated/i)) };
+  g.raw_fields = kv; return g;
+}
+const yesNo = (text, re) => {   // answer on the label's own line, else on the line after it
+  const L = lines(text); for (let i = 0; i < L.length; i++) { if (!re.test(L[i])) continue;
+    for (const s of [L[i].replace(re, ''), L[i + 1] || '']) { const m = s.match(/\b(yes|no)\b/i); if (m) return /yes/i.test(m[1]); } }
+  return null; };
+function parseTerms(text) {
+  const skip = /^(4\.0|terms and conditions|select|add|edit|remove|save|continue|exit|help|back|next|please|click|\*|required)/i; const out = [];
+  lines(text).forEach(l => { const s = l.replace(/\t+/g, ' ').trim(); if (s.length > 4 && !skip.test(s) && !/^\d+(\.\d+)?\s/.test(s) && !out.includes(s)) out.push(s); });
+  return out;
+}
+function parsePersonnel(text) {
+  return lines(text).map(l => l.split('\t').map(x => x.trim())).filter(p => p.length >= 4 && /,/.test(p[0]) && /^\d{6,8}$/.test(p[3] || ''))
+    .map(p => ({ name: p[0], role: p[1], department: p[2], department_id: p[3], rsh500: mdy(p[4]) || p[4] || '' }));
+}
+
+/* ---------- capture -> award packages ---------- */
+function packagesFromCapture(cap, ctx) {
+  ctx = ctx || {}; const ref = ctx.ref || todayIso(); const out = [], warns = [];
+  for (const [awd, raw] of Object.entries(cap.awards || {})) {
+    const projects = parseProjects(raw.projects), allocs = parseAllocations(raw.allocations), eff = parseEffort(raw.effort), cf = parseCfda(raw.cfda);
+    const gen = parseGeneral(raw.general, raw.financial_summary);
+    const budgets = (raw.budgets || []).map(b => {
+      const al = allocs.find(x => x.project_id === b.project && x.name === b.allocation) || allocs.find(x => x.project_id === b.project && String(b.allocation).startsWith(x.name.slice(0, 25)));
+      const bl = parseBudgetRows(b); const tot = (bl.find(x => x.category === 'Total') || {}).active_allocation_total;
+      const ok = !!al && tot != null && Math.abs(tot - al.budget_release) < 1;
+      if (al && tot != null && !ok && al.budget_release !== 0) warns.push(`${awd} ${b.project}: budget total ${tot} does not match allocation release ${al.budget_release}; not stored`);
+      return { project_id: b.project, allocation: b.allocation, allocation_start: al && al.start, allocation_end: al && al.end, allocation_budget_release: al && al.budget_release,
+        lines: ok ? bl.filter(x => x.category !== 'Total') : [], total: tot == null ? null : tot, reconciles: ok };
+    });
+    allocs.forEach(al => { if (al.budget_release && !budgets.some(b => b.project_id === al.project_id && b.total != null)) warns.push(`${awd} ${al.project_id}: no captured budget for allocation ${al.name}`); });
+    projects.forEach(p => { p.allocations = allocs.filter(x => x.project_id === p.project_id); p.budgets = budgets.filter(b => b.project_id === p.project_id); });
+    const first = budgets.find(b => b.lines.length); const byCat = {};
+    if (first) first.lines.forEach(l => { if (l.active_award_total) byCat[l.category] = l.active_award_total; });
+    const starts = projects.map(p => p.start).filter(Boolean).sort(), ends = projects.map(p => p.end).filter(Boolean).sort();
+    const rel = projects.reduce((s, p) => s + p.allocations.reduce((t, a) => t + a.budget_release, 0), 0);
+    const missing = ['title', 'pi', 'sponsor', 'sponsor_award_id'].filter(k => !gen[k]);
+    if (missing.length) warns.push(`${awd}: could not read ${missing.join(', ')} from the award page text; shown as blank (check the Summary tab)`);
+    const hs = yesNo(raw.compliance, /human subjects/i), an = yesNo(raw.compliance, /vertebrate animals/i);
+    out.push({ schema: 'whitney.award_package/v1', captured_at: cap.captured_at || new Date().toISOString(), parse_warnings: warns.filter(w => w.startsWith(awd)),
+      award: { award_id: awd, title: gen.title || (projects[0] && projects[0].title) || awd, status: gen.state || '', principal_investigator: gen.pi || '', responsible_unit: gen.resp_unit || (projects[0] && projects[0].unit) || '',
+        responsible_unit_id: gen.resp_unit_id || (projects[0] && projects[0].unit_id) || '', primary_unit_admin_contact: gen.unit_admin || '', cg_contact: gen.cg_contact || '',
+        sponsor: gen.sponsor || '', sponsor_award_id: gen.sponsor_award_id || '', prime_sponsor: gen.prime_sponsor || null, prime_sponsor_award_id: gen.prime_sponsor_award_id || null,
+        instrument_type: lines(raw.instrument).filter(Boolean).pop() || null, cfda: cf.cfda, fain: cf.fain, sponsor_date_awarded: gen.date_awarded || null,
+        start: gen.start || starts[0] || null, end: gen.end || ends[ends.length - 1] || null, human_subjects: hs === true, laboratory_animals: an === true,
+        budget_released: gen.budget_released || rel, sponsor_authorized_amount: gen.sponsor_authorized || rel, total_anticipated_amount: gen.anticipated || rel,
+        sponsor_authorized_direct: gen.direct || 0, sponsor_authorized_indirect: gen.indirect || 0, cost_share_total: gen.cost_share || 0 },
+      budget_by_category_award_total: byCat, key_personnel: parsePersonnel(raw.personnel), senior_key_personnel_detail: parseKeypers(raw.key_personnel_detail),
+      related: { proposals: parseIds(raw.proposals, 'PRO'), agreements: parseIds(raw.agreements, 'AGR') }, terms_and_conditions: parseTerms(raw.terms),
+      effort: { rows: eff.rows, current_period: curPeriod(eff.rows, ref), notes: eff.notes, history: eff.mods }, projects,
+      raw_text: { general: String(raw.general || '').slice(0, 8000), terms: String(raw.terms || '').slice(0, 8000), compliance: String(raw.compliance || '').slice(0, 4000) } });
+  }
+  return { packages: out, warnings: warns };
+}
+
+/* ---------- storing ---------- */
+function slim(pkg) {   // payroll/balance copies in a package go stale as soon as the next recon workbook loads; keep what UFIRST owns
+  const c = JSON.parse(JSON.stringify(pkg));
+  (c.projects || []).forEach(p => { delete p.projected_payroll; delete p.payroll_posted_fy27; delete p.workbook_balances; });
+  return c;
+}
+
+/* ---------- scope from a ledger (balance sheet) ---------- */
+function scopeOf(files, cfg) {
+  const rows = []; for (const f of files || []) if (f.sheets && f.sheets.balances) rows.push(...f.sheets.balances.rows);
+  if (!rows.length) return null;
+  const funds = new Set(cfg.funds || ['201', '209', '211', '213']), ex = new RegExp(cfg.excludeRegex || 'PI\\s*(?:OH|Overhead)', 'i');
+  const inScope = new Set(), all = new Set();
+  rows.forEach(r => {
+    const fsp = String(r['Flex / SoF / Project'] || '').trim(); if (!fsp) return;
+    const m = fsp.match(/^(\S+)\s+-\s+(.*)$/); let code = m ? m[1] : fsp; if (/^\d+$/.test(code)) code = code.padStart(8, '0');
+    all.add(code); if (funds.has(String(r['Fund'] || '').trim()) && !ex.test(fsp)) inScope.add(code);
+  });
+  return { inScope, all };
+}
+function projectInScope(p, led, pkg) {   // new awards (no project in the workbook yet) fall back to Whitney unit ids 5713xxxx
+  if (led) { if (led.inScope.has(p.project_id)) return true; if (p.in_scope === false) return false;
+    const known = pkg && pkg.projects.some(x => led.all.has(x.project_id)); return !known && /^5713/.test(p.unit_id || ''); }
+  return p.in_scope != null ? !!p.in_scope : /^5713/.test(p.unit_id || '');
+}
+
+/* ---------- derivations ---------- */
+function commitmentsFor(pkg, ctx) {
+  const awd = pkg.award.award_id, cur = (pkg.effort && pkg.effort.current_period) || curPeriod((pkg.effort && pkg.effort.rows) || [], ctx.ref);
+  const per = new Map();
+  cur.forEach(r => { const x = per.get(r.person) || { months: 0, pct: 0, appt: r.appointment, start: r.start, end: r.end }; x.months += r.total_effort_months; x.pct += r.salary_request_pct + r.cost_share_pct; per.set(r.person, x); });
+  const inscope = pkg.projects.filter(p => projectInScope(p, ctx.led, pkg)), ids = new Set(inscope.map(p => p.project_id));
+  const roles = {}; (pkg.key_personnel || []).forEach(k => { roles[norm((k.name || '').split(',')[0])] = k.role; });
+  (pkg.senior_key_personnel_detail || []).forEach(k => { const n = norm((k.name || '').split(',')[0]); if (!roles[n]) roles[n] = k.role; });
+  const out = {};
+  per.forEach((x, person) => {
+    const parts = person.trim().split(/\s+/), last = norm(parts[parts.length - 1]); let cand = null;
+    const paid = (ctx.pp || []).filter(r => ids.has(r.code) && norm((r.name || '').split(',')[0]) === last).sort((a, b) => b.pct - a.pct);
+    if (paid.length) cand = paid[0].code;
+    if (!cand) { const m = inscope.find(p => norm((p.project_manager || '').split(',')[0]) === last); cand = m && m.project_id; }
+    if (!cand) return;
+    const lastname = parts[parts.length - 1], firstname = parts.slice(0, -1).join(' ');
+    (out[cand] = out[cand] || []).push({ name: `${lastname}, ${firstname}`, role: roles[last] || 'Key personnel', pct: r2(x.pct), months: Math.round(x.months * 1000) / 1000,
+      source: `UFIRST ${awd} effort ${x.start} to ${x.end} (${x.appt})` });
+  });
+  return out;
+}
+function docSummary(pkg, p, ctx) {
+  const a = pkg.award, cf = a.cfda || [], cur = (pkg.effort && pkg.effort.current_period) || [];
+  const f = n => '$' + (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const f0 = n => '$' + Math.round(n || 0).toLocaleString('en-US');
+  const pb = (p.budgets || []).filter(b => b.total != null);
+  const bud = pb.map(b => `  ${b.allocation} (${b.allocation_start} to ${b.allocation_end}): ` + b.lines.filter(l => l.active_allocation_total).map(l => `${l.category} ${f0(l.active_allocation_total)}`).join('; ') + ` | total ${f(b.total)}`).join('\n');
+  const eff = cur.map(r => `  ${r.person}: ${r.total_effort_months} mo (${(r.salary_request_pct + r.cost_share_pct).toFixed(2)}%), ${r.appointment}, ${r.start} to ${r.end}`).join('\n') || '  none';
+  return `UFIRST ${a.award_id}: ${a.title}\nPI ${a.principal_investigator} | Sponsor ${a.sponsor} (${a.sponsor_award_id})` + (a.prime_sponsor ? ` | Prime ${a.prime_sponsor} (${a.prime_sponsor_award_id})` : '') +
+    `\nCFDA ${cf.map(c => c.cfda).join(', ') || 'n/a'} | FAIN ${a.fain || 'n/a'} | Award ${a.start} to ${a.end} | Awarded ${a.sponsor_date_awarded || 'n/a'}` +
+    `\nAward total ${f(a.budget_released)} (direct ${f(a.sponsor_authorized_direct)}, indirect ${f(a.sponsor_authorized_indirect)}) | Project IDC ${p.idc_rate}% | Type ${p.project_type || ''}` +
+    `\nHuman subjects: ${a.human_subjects ? 'Yes' : 'No'} | Animals: ${a.laboratory_animals ? 'Yes' : 'No'} | Cost share ${f(a.cost_share_total)}` +
+    `\n\nProject budget (UFIRST allocation):\n${bud || '  n/a'}` + `\n\nEffort committed, current budget period (whole award):\n${eff}\nUFIRST effort notes: ${(pkg.effort && pkg.effort.notes) || 'none'}` +
+    '\n\nTerms and conditions:\n' + ((pkg.terms_and_conditions || []).map(t => '  - ' + t).join('\n') || '  (none captured)');
+}
+const FED = /^(NATL SCIENCE|NATL INST|NATL CTR|NATIONAL (SCIENCE|INST|CENTER))/i;
+function trackerRowsFor(pkg, ctx) {
+  const a = pkg.award, ref = ctx.ref, cur = (pkg.effort && pkg.effort.current_period) || [], rows = [];
+  const sub = Object.entries(pkg.budget_by_category_award_total || {}).some(([k, v]) => /^Subaward/i.test(k) && v > 0);
+  const awardEnd = a.end;
+  pkg.projects.filter(p => projectInScope(p, ctx.led, pkg)).forEach(p => {
+    const [last, ...rest] = (p.project_manager || '').split(','); const mgrLast = norm(last);
+    const pm = cur.filter(r => norm(r.person.split(/\s+/).pop()) === mgrLast);
+    let finalReport = FED.test(a.sponsor || '') && awardEnd ? addDays(awardEnd, 120) : null, nextReport = null;
+    (pkg.terms_and_conditions || []).forEach(t => {
+      const ds = [...t.matchAll(/\b(\d{1,2}\/\d{1,2}\/\d{4})\b/g)].map(m => mdy(m[1])).filter(d => d && d >= ref).sort();
+      if (/eporting deadline/.test(t) && ds.length) { nextReport = ds[0]; finalReport = ds[ds.length - 1]; }
+      if (/RPPR/.test(t) && /on or before 7\/1/.test(t)) { const y = +ref.slice(0, 4) + (ref >= ref.slice(0, 4) + '-07-01' ? 1 : 0); const nr = `${y}-07-01`; nextReport = p.end && nr <= p.end ? nr : null; }
+    });
+    const cs = a.cost_share_total && a.budget_released ? (a.cost_share_total / a.budget_released * 100).toFixed(1) + '%' : '0%';
+    rows.push({ Award_ID: a.award_id, Project_ID: p.project_id, ProjectName: p.title, PI_Last: last.trim(), PI_First: rest.join(',').trim(), Dept_ID: p.unit_id, Sponsor: a.sponsor,
+      'Project Start Date': p.start, 'Project End Date': p.end, 'PI_Effort Months': r2(pm.reduce((s, r) => s + r.total_effort_months, 0)), 'SubAward Status': sub ? 'Budgeted' : 'None',
+      SubReceipent: '', 'CostShare %': cs, RSH300: '', IACUC: a.laboratory_animals ? 'Required (animals)' : 'Not applicable', 'next report Due': nextReport, 'Final Report due': finalReport,
+      CloseOut_6_Month: p.end ? addDays(p.end, -182) : null, Final_90_days: p.end ? addDays(p.end, -90) : null, 'Final 30 days': p.end ? addDays(p.end, -30) : null, 'Account Code Check': '',
+      Award_PI: a.principal_investigator, Award_End: awardEnd, Sponsor_Award_ID: a.sponsor_award_id, Project_Budget_Released: p.budget_released, IDC_Rate: p.idc_rate, Source: 'UFIRST' });
+  });
+  return rows;
+}
+const KEEP = ['SubReceipent', 'RSH300', 'Account Code Check'];
+function mergeTracker(existing, uf) {   // UFIRST wins for what it provides; typed-in blanks-only columns are never overwritten
+  const byId = new Map(); const out = (existing || []).map(r => Object.assign({}, r));
+  out.forEach(r => { const id = String(r['Project_ID'] || '').trim(); if (id) byId.set(id, r); });
+  uf.forEach(u => {
+    const cur = byId.get(u.Project_ID);
+    if (cur) { Object.keys(u).forEach(k => { if (KEEP.includes(k) && String(cur[k] || '').trim()) return; if (u[k] != null && u[k] !== '') cur[k] = u[k]; }); }
+    else { const r = Object.assign({}, u); out.push(r); byId.set(u.Project_ID, r); }
+  });
+  return out;
+}
+
+/* ---------- apply to state ---------- */
+function applyAll(ST, ctx) {
+  ST.awardPackages = ST.awardPackages || {}; ST.commitments = ST.commitments || {}; ST.docs = ST.docs || {};
+  let nComm = 0, nDocs = 0; const pkgs = Object.values(ST.awardPackages);
+  pkgs.forEach(pkg => { const tag = `UFIRST ${pkg.award.award_id}`; Object.keys(ST.commitments).forEach(k => { ST.commitments[k] = ST.commitments[k].filter(c => !String(c.source || '').startsWith(tag)); if (!ST.commitments[k].length) delete ST.commitments[k]; }); });
+  pkgs.forEach(pkg => {
+    const cm = commitmentsFor(pkg, ctx);
+    Object.entries(cm).forEach(([code, list]) => { (ST.commitments[code] = ST.commitments[code] || []).push(...list); nComm += list.length; });
+    pkg.projects.filter(p => projectInScope(p, ctx.led, pkg)).forEach(p => {
+      const d = ST.docs[p.project_id];
+      if (!d || String(d.name || '').startsWith('UFIRST ')) { ST.docs[p.project_id] = { name: `UFIRST ${pkg.award.award_id} (captured ${String(pkg.captured_at || '').slice(0, 10)})`, pages: '', lines: [], summary: docSummary(pkg, p, ctx) }; nDocs++; }
+    });
+  });
+  return { commitments: nComm, docs: nDocs };
+}
+const trackerRows = (ST, ctx) => [].concat(...Object.values(ST.awardPackages || {}).map(p => trackerRowsFor(p, ctx)));
+
+/* ---------- budget category crosswalk (account code -> UFIRST budget category) ---------- */
+function categoryOfAccount(acct) {
+  const s = String(acct || ''); const n = parseInt(s.slice(0, 3), 10);
+  if (/^7[12]\d/.test(s) && /^712/.test(s)) return 'Subaward';
+  if (/^754/.test(s)) return 'Tuition';
+  if (/^72/.test(s)) return 'Travel';
+  if (/^73/.test(s)) return 'Materials and Supplies';
+  if (/^6/.test(s)) return 'Salaries and fringe';
+  if (/^78|^79/.test(s)) return 'Indirect / other';
+  return 'Other';
+}
+function groupBudgetCategory(cat) {
+  const c = String(cat || '');
+  if (/^Salaries|Fringe/i.test(c)) return 'Salaries and fringe'; if (/Travel/i.test(c)) return 'Travel'; if (/Materials|Supplies|Equipment/i.test(c)) return 'Materials and Supplies';
+  if (/Tuition/i.test(c)) return 'Tuition'; if (/Subaward|Subward/i.test(c)) return 'Subaward'; if (/Indirect/i.test(c)) return 'Indirect / other'; return 'Other';
+}
+
+root.Ufirst = { detect, packagesFromCapture, slim, scopeOf, projectInScope, commitmentsFor, trackerRows, mergeTracker, applyAll, docSummary, categoryOfAccount, groupBudgetCategory, curPeriod,
+  _t: { parseProjects, parseAllocations, parseEffort, parseCfda, parseGeneral, parseTerms } };
+if (typeof module !== 'undefined' && module.exports) module.exports = root.Ufirst;
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
 <script>
 'use strict';
 const $ = s => document.querySelector(s);
@@ -640,7 +943,7 @@ const STATUS = { open: 'Open', review: 'In review', resolved: 'Resolved', dismis
 
 /* ---------- persistent state ---------- */
 const LS = 'whitney_postaward_v1';
-let ST = { flagState: {}, manualFlags: [], commitments: {}, trackerLinks: {}, cfg: {}, docs: {}, snaps: {} };
+let ST = { flagState: {}, manualFlags: [], commitments: {}, trackerLinks: {}, cfg: {}, docs: {}, snaps: {}, awardPackages: {}, importLog: [] };
 try { Object.assign(ST, JSON.parse(localStorage.getItem(LS) || '{}')); } catch (e) {}
 const save = () => { try { localStorage.setItem(LS, JSON.stringify(ST)); } catch (e) { toast('Could not save in this browser'); } };
 function toast(t) { const d = document.createElement('div'); d.textContent = t; d.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#101820;color:#fff;padding:9px 16px;border-radius:10px;z-index:300'; document.body.appendChild(d); setTimeout(() => d.remove(), 3200); }
@@ -673,9 +976,53 @@ async function ingest(fileList, quiet) {
   }
   rebuild();
 }
+
+/* ---------- UFIRST import (award capture / packages + recon workbook) ---------- */
+const pad8 = v => { const s = String(v == null ? '' : v).trim(); return /^\d+$/.test(s) ? s.padStart(8, '0') : s; };
+function ufCtx() {
+  const pp = [];
+  FILES.forEach(f => { const s = f.sheets && f.sheets.projPayroll; if (s) s.rows.forEach(r => pp.push({ code: pad8(r['Project Code']), name: String(r['Employee Name'] || '').trim(), pct: (+r['Distrib %'] || 0) * (+r['FTE'] || 1) })); });
+  return { ref: new Date().toISOString().slice(0, 10), led: Ufirst.scopeOf(FILES, Object.assign({}, Engine.DEFAULTS, ST.cfg)), pp };
+}
+function effFiles() {   // loaded workbooks + tracker rows generated from the UFIRST packages (UFIRST wins; typed-in blanks are kept)
+  if (!Object.keys(ST.awardPackages || {}).length) return FILES;
+  const have = FILES.find(f => f.sheets && f.sheets.tracker);
+  const rows = Ufirst.mergeTracker(have ? have.sheets.tracker.rows : [], Ufirst.trackerRows(ST, ufCtx()));
+  return [...FILES, { fileName: 'UFIRST', sheets: { tracker: { name: 'UFIRST', rows } }, kinds: [] }];
+}
+function mergeNotes(o) {
+  ['flagState', 'commitments', 'trackerLinks', 'docs'].forEach(k => ST[k] = Object.assign({}, ST[k], o[k]));
+  ST.manualFlags = [...ST.manualFlags.filter(m => !(o.manualFlags || []).some(n => n.id === m.id)), ...(o.manualFlags || [])];
+}
+async function importAward(fileList) {
+  const log = [], sheets = []; let nPk = 0;
+  for (const f of fileList) {
+    if (/\.(xlsx|xlsm|xls)$/i.test(f.name)) { sheets.push(f); continue; }
+    let o; try { o = JSON.parse(await f.text()); } catch (e) { log.push(f.name + ': not a readable JSON file'); continue; }
+    const kind = Ufirst.detect(o);
+    if (!kind) { if (o.commitments || o.docs || o.flagState) { mergeNotes(o); log.push(f.name + ': notes merged'); } else log.push(f.name + ': not a UFIRST capture, award package or notes file'); continue; }
+    let pk = [];
+    if (kind === 'capture') { const r = Ufirst.packagesFromCapture(o, { ref: new Date().toISOString().slice(0, 10) }); pk = r.packages; log.push(...r.warnings); }
+    else pk = kind === 'packages' ? o.awards : [o];
+    pk.forEach(p => {
+      const old = ST.awardPackages[p.award.award_id];   // a newer capture must not blank what an earlier import already knew
+      if (old) { for (const k of Object.keys(old.award)) { const v = p.award[k]; if ((v === '' || v == null || (Array.isArray(v) && !v.length)) && old.award[k]) p.award[k] = old.award[k]; }
+        ['terms_and_conditions', 'key_personnel', 'senior_key_personnel_detail'].forEach(k => { if (!(p[k] || []).length && (old[k] || []).length) p[k] = old[k]; });
+        (p.projects || []).forEach(pr => { const op = old.projects.find(x => x.project_id === pr.project_id); if (!op) return; ['project_contact', 'budget_released', 'project_type', 'advanced_spending', 'kk_level', 'project_closed'].forEach(k => { if (pr[k] == null && op[k] != null) pr[k] = op[k]; }); (pr.budgets || []).forEach((b, i) => { if (!b.lines.length) { const ob = (op.budgets || []).find(x => x.allocation === b.allocation && x.lines && x.lines.length); if (ob) pr.budgets[i] = ob; } }); }); }
+      ST.awardPackages[p.award.award_id] = Ufirst.slim(p); nPk++; });
+    log.push(`${f.name}: ${pk.length} award(s) read`);
+  }
+  save();
+  if (sheets.length) await ingest(sheets, true); else rebuild();
+  const nC = Object.values(ST.commitments).reduce((s, l) => s + l.filter(c => /^UFIRST /.test(c.source || '')).length, 0);
+  const nT = M ? M.tracker.filter(t => Object.keys(ST.awardPackages).includes(t.awardId)).length : 0;
+  ST.importLog = [`${new Date().toLocaleString()}: ${nPk} award(s)${sheets.length ? ', ' + sheets.length + ' workbook(s)' : ''}`, ...log].slice(0, 40); save();
+  toast(M ? `Imported ${nPk} award(s): ${nT} tracker rows, ${nC} commitments` + (log.some(l => /could not|not stored|no captured/.test(l)) ? ' (see Rules & settings for warnings)' : '') : `Imported ${nPk} award(s). Now drop the recon workbook to link them.`);
+}
 function rebuild() {
   if (!FILES.length) { M = null; return render(); }
-  M = Engine.build(FILES, ST.cfg, ST);
+  if (Object.keys(ST.awardPackages || {}).length) { Ufirst.applyAll(ST, ufCtx()); save(); }
+  M = Engine.build(effFiles(), ST.cfg, ST);
   // weekly snapshot for trend lines
   if (M.kinds.includes('balances')) {
     const s = {}; M.awards.forEach(a => s[a.code] = [Math.round(a.exp), Math.round(a.projected), Math.round(a.avail)]);
@@ -702,7 +1049,7 @@ const negc = r => r < 0 ? 'neg' : '';
 
 /* ---------- views ---------- */
 function render() {
-  $('#sub').textContent = M ? `Data as of ${M.ref} · FY ends ${M.FYE} · ${M.awards.length} awards in scope · ${FILES.map(f => f.fileName).join(' + ')}` : 'No data loaded';
+  $('#sub').textContent = M ? `Data as of ${M.ref} · FY ends ${M.FYE} · ${M.awards.length} awards in scope · ${FILES.map(f => f.fileName).join(' + ')}${Object.keys(ST.awardPackages || {}).length ? ' + UFIRST (' + Object.keys(ST.awardPackages).length + ' awards)' : ''}` : 'No data loaded';
   const tabs = [['overview', 'Overview'], ['flags', 'Flags', M && flagsOpen(M.flags).length], ['awards', 'Awards', M && M.awards.length], ['txns', 'Transactions'], ['people', 'Payroll & effort'], ['tracker', 'Tracker (MPAR)', M && M.tracker.length || null], ['settings', 'Rules & settings']];
   $('#nav').innerHTML = tabs.map(([k, t, n]) => `<button data-view="${k}" class="${VIEW === k ? 'on' : ''}">${t}${n ? `<span class="n">${n}</span>` : ''}</button>`).join('');
   const main = $('#main');
@@ -712,7 +1059,7 @@ function render() {
 }
 function emptyHTML() {
   return `<div class="empty"><h2>Drop your files here</h2><p>Drag in the weekly Monday finances workbook (balances, expenses, payroll, projected payroll, projects) and, optionally, the MPAR award tracker. Everything is read in this browser; nothing is uploaded anywhere.</p>
-  <p><button class="btn pri" onclick="document.getElementById('fileIn').click()">Choose files</button> <button class="btn" onclick="document.getElementById('linkBtn').click()">Link a OneDrive / Drive folder</button></p>
+  <p><button class="btn pri" onclick="document.getElementById('fileIn').click()">Choose files</button> <button class="btn" onclick="document.getElementById('linkBtn').click()">Link a OneDrive / Drive folder</button> <button class="btn pri" onclick="document.getElementById('awardIn').click()">Import award</button></p>
   <p class="note">Scope: fund 201, 209, 211 and 213, leaving out any award whose name is a PI OH / PI Overhead account. Change this under Rules &amp; settings.</p></div>`;
 }
 function awardChip(a) { return a.worst === 'ok' ? chip('ok') : chip(a.worst, `${a.openFlags} ${a.openFlags === 1 ? 'flag' : 'flags'}`); }
@@ -829,6 +1176,8 @@ function vSettings() {
    <p class="note">Changes apply immediately and are saved in this browser.</p><button class="btn sm" id="resetCfg">Reset to defaults</button></div></div>
   <div class="panel"><h2>Rules</h2><div class="pad">${Object.entries(R).filter(([k]) => k !== 'MANUAL').map(([k, r]) => `<div class="rule"><label class="f" style="margin:0"><input type="checkbox" data-rule="${k}" ${c.rules[k] === false ? '' : 'checked'}> <b>${esc(r.title)}</b></label><span class="chip ${r.sev}">${SEVL[r.sev]}</span><span class="chip neutral">${r.cat}</span></div>`).join('')}</div></div></div>
   <div class="panel"><h2>Linked folders (live data)</h2><div class="pad sm">${FSA ? (LINKS.length ? LINKS.map(L => `<div>${esc(L.handle.name)} <button class="btn sm" data-unlink="${L.id}">Unlink</button></div>`).join('') : '<div>No folder linked yet. Use <b>Link folder</b> at the top.</div>') + '<p class="note">Point it at the OneDrive or Google Drive folder that holds the weekly workbook (and optionally the MPAR tracker). The newest workbook is read automatically; nothing is uploaded.</p><button class="btn sm" id="syncNow">Check now</button>' : '<div>This browser cannot link folders. Open the page in Chrome or Edge.</div>'}</div></div>
+  <div class="panel"><h2>UFIRST awards</h2><div class="pad sm"><div><b>${Object.keys(ST.awardPackages || {}).length}</b> award(s) loaded from UFIRST: ${Object.keys(ST.awardPackages || {}).sort().join(', ') || 'none yet. Use <b>Import award</b> at the top.'}</div>
+   ${(ST.importLog || []).length ? `<div class="ex" style="margin:8px 0">${esc(ST.importLog.join('\n'))}</div>` : ''}<button class="btn sm" id="clearUf">Remove UFIRST data</button></div></div>
   <div class="panel"><h2>Data in memory</h2><div class="pad sm">${Object.entries(M.counts).map(([k, v]) => `<div>${k}: <b>${v}</b> rows</div>`).join('')}
   <p class="note">Unlinked payroll lines: ${M.unlinked.length}. Weekly snapshots kept for trend: ${Object.keys(ST.snaps).length}.</p>
   <button class="btn sm" id="clearData">Clear loaded files</button> <button class="btn sm" id="clearNotes">Erase all notes &amp; commitments</button></div></div>`;
@@ -840,6 +1189,7 @@ function bindSettings() {
   document.querySelectorAll('[data-rule]').forEach(e => e.onchange = () => { ST.cfg.rules = Object.assign({}, M.cfg.rules, { [e.dataset.rule]: e.checked }); save(); rebuild(); });
   $('#resetCfg').onclick = () => { ST.cfg = {}; save(); rebuild(); };
   document.querySelectorAll('[data-unlink]').forEach(b => b.onclick = async () => { LINKS = LINKS.filter(L => L.id !== b.dataset.unlink); await hstore('readwrite', s => s.delete(b.dataset.unlink)); showLive(); render(); });
+  if ($('#clearUf')) $('#clearUf').onclick = () => { ST.awardPackages = {}; Object.keys(ST.commitments).forEach(k => { ST.commitments[k] = ST.commitments[k].filter(c => !/^UFIRST /.test(c.source || '')); }); Object.keys(ST.docs).forEach(k => { if (/^UFIRST /.test((ST.docs[k] || {}).name || '')) delete ST.docs[k]; }); ST.importLog = []; save(); rebuild(); };
   if ($('#syncNow')) $('#syncNow').onclick = () => syncLinks(true);
   $('#clearData').onclick = async () => { await idb.clear(); SLOTMOD = {}; FILES = []; rebuild(); };
   $('#clearNotes').onclick = () => { if (confirm('Erase every note, status, commitment and manual flag saved in this browser?')) { Object.assign(ST, { flagState: {}, manualFlags: [], commitments: {}, trackerLinks: {}, docs: {} }); save(); rebuild(); } };
@@ -850,7 +1200,7 @@ let OPEN = null, DTAB = 'summary';
 function openAward(code, keep) {
   const a = M && M.byCode[code]; if (!a) return;
   OPEN = code; if (!keep) DTAB = 'summary';
-  const tabs = [['summary', 'Summary'], ['flags', `Flags (${flagsOpen(a.flags).length})`], ['effort', 'Effort & proposal'], ['txns', `Transactions (${a.tx.length})`], ['payroll', 'Payroll actual'], ['proj', `Projected payroll (${a.pp.length})`], ['compliance', 'Tracker & compliance']];
+  const tabs = [['summary', 'Summary'], ['flags', `Flags (${flagsOpen(a.flags).length})`], ['effort', 'Effort & proposal'], ['txns', `Transactions (${a.tx.length})`], ['payroll', 'Payroll actual'], ['proj', `Projected payroll (${a.pp.length})`], ['ufirst', 'UFIRST & budget'], ['compliance', 'Tracker & compliance']];
   const d = $('#drawer');
   d.innerHTML = `<div class="dh"><div style="display:flex;gap:10px;align-items:flex-start"><div style="flex:1"><h2>${esc(a.code)} · ${esc(a.desc)}</h2><div class="m">PI ${esc(a.pi || '—')} · Dept ${esc(a.dept)} ${esc(a.deptDesc)} · Fund ${esc(a.fund)}${a.fundName ? ' ' + esc(a.fundName) : ''} · ${esc(a.sponsor || a.sponsorTracker || '')} · ${a.begin || '?'} → ${a.end || '?'}${a.bEnd && a.bEnd !== a.end ? ' (budget to ' + a.bEnd + ')' : ''} · status ${esc(a.status || '—')}</div></div>${awardChip(a)} <button class="btn" id="closeD">Close</button></div>
   <div class="dtabs">${tabs.map(([k, t]) => `<button data-dtab="${k}" class="${DTAB === k ? 'on' : ''}">${t}</button>`).join('')}</div></div><div class="db">${dBody(a)}</div>`;
@@ -859,7 +1209,7 @@ function openAward(code, keep) {
 }
 function closeAward() { OPEN = null; $('#drawer').classList.remove('on'); $('#scrim').classList.remove('on'); }
 function dBody(a) {
-  return ({ summary: dSummary, flags: dFlags, effort: dEffort, txns: dTxns, payroll: dPayroll, proj: dProj, compliance: dCompliance }[DTAB])(a);
+  return ({ summary: dSummary, flags: dFlags, effort: dEffort, txns: dTxns, payroll: dPayroll, proj: dProj, ufirst: dUfirst, compliance: dCompliance }[DTAB])(a);
 }
 function monthsList(a) {
   const out = []; let [y, m] = M.FYS.slice(0, 7).split('-').map(Number);
@@ -917,6 +1267,35 @@ function dProj(a) {
   const cols = [{ id: 'n', h: 'Employee', v: p => p.name }, { id: 'c', h: 'Type', v: p => p.cat + ' / ' + p.type, f: p => `${esc(p.cat)}<div class="sm mut">${esc(p.type)} ${esc(p.plan)}</div>` }, { id: 'b', h: 'Commitment', v: p => p.begin, f: p => `${p.begin} → ${p.end}`, cls: () => 'nw' }, { id: 'p', h: 'Distrib %', r: 1, v: p => p.pct, f: p => p.pct + '%' }, { id: 'fte', h: 'FTE', r: 1, v: p => p.fte },
     { id: 'e', h: 'Earnings', r: 1, v: p => p.earn, f: p => fmt(p.earn) }, { id: 'fr', h: 'Fringe', r: 1, v: p => p.fringe, f: p => fmt(p.fringe) }, { id: 't', h: 'Projected total', r: 1, v: p => p.total, f: p => fmt(p.total) }];
   return `<p class="sm">Total projected payroll <b>${fmt(a.payProj)}</b> through ${M.FYE}${a.endDate && !Engine.farFuture(a.endDate) ? `; award ends ${a.endDate}` : ''}.</p>` + tableHTML('dpp' + a.code, cols, a.pp);
+}
+function ufFor(code) { for (const pkg of Object.values(ST.awardPackages || {})) { const p = pkg.projects.find(x => x.project_id === code); if (p) return { pkg, p }; } return null; }
+function dUfirst(a) {
+  const hit = ufFor(a.code);
+  if (!hit) return `<div class="mut">No UFIRST award is loaded for ${esc(a.code)}. Use <b>Import award</b> at the top and drop the award's UFIRST capture (or award package) here.</div>`;
+  const { pkg, p } = hit, w = pkg.award, ef = pkg.effort || {}, F2 = n => n == null ? '' : fmt2(n);
+  const bs = (p.budgets || []).filter(b => b.lines && b.lines.length);
+  const cats = []; bs.forEach(b => b.lines.forEach(l => { if (!cats.includes(l.category) && (l.active_allocation_total || l.active_award_total)) cats.push(l.category); }));
+  const cell = (b, c) => { const l = b.lines.find(x => x.category === c); return l ? l.active_allocation_total : 0; };
+  const budT = bs.length ? `<div class="tw"><table><tr><th>Category</th>${bs.map(b => `<th class="r">${esc((b.allocation_start || '') + ' → ' + (b.allocation_end || ''))}</th>`).join('')}<th class="r">All allocations</th></tr>
+    ${cats.map(c => `<tr><td>${esc(c)}</td>${bs.map(b => `<td class="r">${F2(cell(b, c))}</td>`).join('')}<td class="r"><b>${F2(bs.reduce((s, b) => s + cell(b, c), 0))}</b></td></tr>`).join('')}
+    <tr><td><b>Total</b></td>${bs.map(b => `<td class="r"><b>${F2(b.total)}</b></td>`).join('')}<td class="r"><b>${F2(bs.reduce((s, b) => s + (b.total || 0), 0))}</b></td></tr></table></div>` : '<span class="mut">No verified budget captured for this project.</span>';
+  const grp = {}; bs.forEach(b => b.lines.forEach(l => { const g = Ufirst.groupBudgetCategory(l.category); if (g !== 'Indirect / other') grp[g] = (grp[g] || 0) + l.active_allocation_total; }));
+  const act = {}; a.tx.forEach(t => { const g = Ufirst.categoryOfAccount(t.acct); act[g] = (act[g] || 0) + t.amt; });
+  const gk = [...new Set([...Object.keys(grp), ...Object.keys(act)])].filter(k => k !== 'Indirect / other' && (grp[k] || act[k]));
+  const cmp = gk.length ? `<table><tr><th>Category group</th><th class="r">Budget (all allocations)</th><th class="r">FY27 posted</th></tr>${gk.map(k => `<tr><td>${esc(k)}</td><td class="r">${F2(grp[k] || 0)}</td><td class="r">${F2(act[k] || 0)}</td></tr>`).join('')}</table>
+    <p class="note">FY27 posted covers this fiscal year only (the recon workbook has no earlier detail), grouped by account code: 6xxxxx salaries and fringe, 72xxxx travel, 73xxxx supplies, 754xxx tuition, 712x subawards. Indirect is excluded.</p>` : '';
+  const effT = (ef.current_period || []).length ? `<table><tr><th>Person</th><th>Appt</th><th class="r">Months</th><th class="r">Salary %</th><th class="r">Cost share %</th><th>Period</th></tr>${ef.current_period.map(r => `<tr><td>${esc(r.person)}</td><td>${esc(r.appointment)}</td><td class="r">${r.total_effort_months}</td><td class="r">${r.salary_request_pct}</td><td class="r">${r.cost_share_pct}</td><td class="sm">${esc(r.start)} → ${esc(r.end)}</td></tr>`).join('')}</table>` : '<span class="mut">No effort recorded in UFIRST for the current period.</span>';
+  const kv = [['Award', w.award_id], ['Status', w.status], ['PI', w.principal_investigator], ['Sponsor', `${w.sponsor || ''} ${w.sponsor_award_id ? '(' + w.sponsor_award_id + ')' : ''}`], ['Prime', w.prime_sponsor ? `${w.prime_sponsor} (${w.prime_sponsor_award_id || ''})` : ''],
+    ['Instrument', w.instrument_type], ['CFDA', (w.cfda || []).map(c => c.cfda).join(', ')], ['FAIN', w.fain], ['Award dates', `${w.start || ''} → ${w.end || ''}`], ['Awarded', w.sponsor_date_awarded],
+    ['Award total', F2(w.budget_released)], ['Direct / indirect', `${F2(w.sponsor_authorized_direct)} / ${F2(w.sponsor_authorized_indirect)}`], ['Project IDC', p.idc_rate + '%'], ['Project type', p.project_type],
+    ['Human subjects', w.human_subjects ? 'Yes' : 'No'], ['Animals', w.laboratory_animals ? 'Yes' : 'No'], ['Cost share', F2(w.cost_share_total)], ['Unit admin', w.primary_unit_admin_contact], ['C&G contact', w.cg_contact], ['Captured', String(pkg.captured_at || '').slice(0, 10)]];
+  return `${(pkg.parse_warnings || []).length ? `<div class="panel"><h2>Import warnings</h2><div class="pad sm">${pkg.parse_warnings.map(x => '<div>• ' + esc(x) + '</div>').join('')}</div></div>` : ''}
+  <div class="panel"><h2>${esc(w.title)}</h2><div class="pad"><div class="kv">${kv.filter(x => x[1] !== '' && x[1] != null).map(([l, v]) => `<div><span class="l">${esc(l)}</span><div class="v sm">${esc(v)}</div></div>`).join('')}</div></div></div>
+  <div class="panel"><h2>Budget by category (UFIRST, per allocation)</h2><div class="pad">${budT}${cmp}</div></div>
+  <div class="panel"><h2>Effort committed in UFIRST (whole award, current period)</h2><div class="pad">${effT}${ef.notes ? `<h4 style="margin:12px 0 4px">UFIRST effort notes</h4><div class="ex">${esc(ef.notes)}</div>` : ''}<p class="note">UFIRST effort is recorded per award, and the percent is months ÷ budget-period months. Commitments are attached to the project where each person is paid or managed. Variance flags are held back until about 120 days before the period ends, because 9-month faculty often take effort as summer salary.</p></div></div>
+  <div class="panel"><h2>Terms and conditions</h2><div class="pad sm">${(pkg.terms_and_conditions || []).length ? pkg.terms_and_conditions.map(x => '<div>• ' + esc(x) + '</div>').join('') : '<span class="mut">None captured.</span>'}<p class="note">UFIRST shows special terms truncated on the SmartForm; the full text is on the award workspace Terms tab.</p></div></div>
+  <div class="panel"><h2>Key personnel and related items</h2><div class="pad sm">${(pkg.key_personnel || []).map(k => `<div>${esc(k.name)} · ${esc(k.role)} · ${esc(k.department || '')} · RSH500 ${esc(k.rsh500 || '—')}</div>`).join('') || '<span class="mut">No key personnel captured.</span>'}
+   <div style="margin-top:8px">${[...(pkg.related.proposals || []), ...(pkg.related.agreements || [])].map(x => `<div>${esc(x.id)} · ${esc(x.name || '')} · ${esc(x.state || '')}</div>`).join('')}</div></div></div>`;
 }
 function dCompliance(a) {
   const t = a.tracker;
@@ -1003,11 +1382,13 @@ document.addEventListener('change', e => {
   else if (t.dataset.q) { const [k, f] = t.dataset.q.split('|'); (UI.q[k] = UI.q[k] || {})[f] = t.type === 'checkbox' ? t.checked : t.value; refresh(); }
   else if (t.id === 'docIn' && t.files[0]) { const code = t.dataset.code; readDoc(t.files[0], code).then(() => openAward(code, true)).catch(x => toast('Could not read document: ' + x.message)); }
   else if (t.id === 'fileIn') { ingest([...t.files]); t.value = ''; }
-  else if (t.id === 'stateIn' && t.files[0]) t.files[0].text().then(s => { try { const o = JSON.parse(s); ['flagState', 'commitments', 'trackerLinks', 'docs'].forEach(k => ST[k] = Object.assign({}, ST[k], o[k])); ST.manualFlags = [...ST.manualFlags.filter(m => !(o.manualFlags || []).some(n => n.id === m.id)), ...(o.manualFlags || [])]; save(); rebuild(); toast('Notes loaded'); } catch (x) { toast('Not a valid notes file'); } });
+  else if (t.id === 'awardIn') { importAward([...t.files]); t.value = ''; }
+  else if (t.id === 'stateIn' && t.files[0]) t.files[0].text().then(s => { try { const o = JSON.parse(s); mergeNotes(o); save(); rebuild(); toast('Notes loaded'); } catch (x) { toast('Not a valid notes file'); } });
 });
 document.addEventListener('input', e => { const t = e.target; if (t.type === 'search' && t.dataset.q) { const [k, f] = t.dataset.q.split('|'); (UI.q[k] = UI.q[k] || {})[f] = t.value; clearTimeout(window.__d); window.__d = setTimeout(() => { refresh(); const el = document.querySelector(`[data-q="${t.dataset.q}"]`); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 200); } });
 function refresh() { if (VIEW === 'awards' || VIEW === 'overview') { const el = $('#awardTable'); if (el && !UI._full) { el.innerHTML = awardTable(VIEW === 'awards' ? 'aw' : 'ov'); } } else render(); if (OPEN) { const d = $('#drawer'); const y = d.scrollTop; openAward(OPEN, true); d.scrollTop = y; } if (VIEW === 'awards' || VIEW === 'overview') { /* header sort arrows */ } }
 $('#addBtn').onclick = () => $('#fileIn').click();
+$('#impAwd').onclick = () => $('#awardIn').click();
 $('#fileIn').onchange = e => { ingest([...e.target.files]); e.target.value = ''; };
 $('#expFlags').onclick = exportFlags;
 $('#expState').onclick = () => download(`post-award-notes ${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({ flagState: ST.flagState, manualFlags: ST.manualFlags, commitments: ST.commitments, trackerLinks: ST.trackerLinks, docs: ST.docs }, null, 1), 'application/json');
@@ -1018,7 +1399,7 @@ let dragN = 0;
 addEventListener('dragenter', e => { e.preventDefault(); dragN++; $('#drop').classList.add('on'); });
 addEventListener('dragleave', e => { dragN = Math.max(0, dragN - 1); if (!dragN) $('#drop').classList.remove('on'); });
 addEventListener('dragover', e => e.preventDefault());
-addEventListener('drop', e => { e.preventDefault(); dragN = 0; $('#drop').classList.remove('on'); const fs = [...e.dataTransfer.files]; ingest(fs.filter(f => /\.(xlsx|xlsm|xls)$/i.test(f.name))); });
+addEventListener('drop', e => { e.preventDefault(); dragN = 0; $('#drop').classList.remove('on'); const fs = [...e.dataTransfer.files]; if (fs.some(f => /\.json$/i.test(f.name))) importAward(fs.filter(f => /\.(json|xlsx|xlsm|xls)$/i.test(f.name))); else ingest(fs.filter(f => /\.(xlsx|xlsm|xls)$/i.test(f.name))); });
 document.addEventListener('mousemove', e => { const g = e.target.closest && e.target.closest('[data-tip]'); const tip = $('#tip'); if (g) { tip.innerHTML = g.dataset.tip; tip.style.display = 'block'; tip.style.left = Math.min(innerWidth - 270, e.clientX + 14) + 'px'; tip.style.top = (e.clientY + 14) + 'px'; } else tip.style.display = 'none'; });
 // sortable headers also need table re-render inside award table
 const _rend = render;
@@ -1107,6 +1488,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) sync
     if (seen !== window.EMBED.id || !saved.length) {
       await idb.clear(); saved = [];
       for (const f of window.EMBED.files) { const buf = Uint8Array.from(atob(f.b64), c => c.charCodeAt(0)); const rec = { kind: f.kind, name: f.name, buf, modified: 0 }; await idb.put(rec); saved.push(rec); }
+      if (window.EMBED.ufirst) { ST.awardPackages = {}; (window.EMBED.ufirst.awards || []).forEach(p => { ST.awardPackages[p.award.award_id] = Ufirst.slim(p); }); }
       try { localStorage.setItem('whitney_embed_id', window.EMBED.id); } catch (e) {}
     }
   }
